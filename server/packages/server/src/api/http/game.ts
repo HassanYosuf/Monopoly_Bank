@@ -7,10 +7,10 @@ export const subRoute = "/api/game";
 const router = express.Router();
 
 // Create a new game
-router.post("/", (req, res) => {
+router.post("/", async (req, res) => {
   const { name, token, edition } = req.body as ICreateGameRequest;
 
-  const { gameId, userToken, playerId } = gameStore.createGame(name, token, edition);
+  const { gameId, userToken, playerId } = await gameStore.createGame(name, token, edition);
 
   const response: IJoinGameResponse = { gameId, userToken, playerId, edition };
   res.json(response);

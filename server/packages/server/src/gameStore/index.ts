@@ -5,14 +5,18 @@ import { loadAllGames, persistGameCreated } from "../persistence/supabase";
 class GameStore {
   private games: Record<string, Game> = {};
 
-  public createGame(initialBankersName: string, initialBankersToken: string, edition: string) {
+  public async createGame(initialBankersName: string, initialBankersToken: string, edition: string) {
     // Generate a game id
     const gameId = createUniqueGameId(Object.keys(this.games));
 
     // Create the game
     const deleteInstance = () => this.deleteGame(gameId);
     this.games[gameId] = new Game(gameId, deleteInstance, edition);
-    void persistGameCreated(gameId, edition);
+    // Awaited (unlike every other persistence call) because the player/event
+    // rows about to be written both have a foreign key on this game row —
+    // firing it off in parallel with addPlayer below let the child inserts
+    // reach Supabase before the parent row committed, silently failing.
+    await persistGameCreated(gameId, edition);
 
     // Add the user that created this game and set them as a banker
     const game = this.games[gameId];
