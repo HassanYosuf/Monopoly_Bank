@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, Building2, Home, Minus, Plus } from "lucide-react";
-import { toast } from "sonner";
+import { ArrowLeft, Building2, Home, Lock } from "lucide-react";
 import { useGameStore } from "@/store/useGameStore";
 import { useDashboardStore } from "@/store/useDashboardStore";
 import { EDITIONS, formatCurrency } from "@/lib/locale";
@@ -15,6 +14,7 @@ import {
   type PropertyDef,
 } from "@/lib/properties";
 import { TokenBadge } from "@/components/icons/token-badge";
+import { PropertyManageSheet } from "@/components/properties/PropertyManageSheet";
 import { cn } from "@/lib/utils";
 
 const GROUP_ORDER: ColorGroup[] = [
@@ -36,14 +36,12 @@ export function Properties() {
   const players = useDashboardStore((s) => s.players);
   const selfId = useDashboardStore((s) => s.selfId);
   const properties = useDashboardStore((s) => s.properties);
-  const buyProperty = useDashboardStore((s) => s.buyProperty);
-  const buildOnProperty = useDashboardStore((s) => s.buildOnProperty);
-  const sellBuildingOnProperty = useDashboardStore((s) => s.sellBuildingOnProperty);
 
   const edition = EDITIONS[editionId];
   const defs = PROPERTIES[editionId];
 
   const [filter, setFilter] = useState<"all" | "mine">("all");
+  const [managingPropertyId, setManagingPropertyId] = useState<string | null>(null);
 
   const grouped = useMemo(() => {
     const byGroup = new Map<ColorGroup, PropertyDef[]>();
@@ -66,39 +64,6 @@ export function Properties() {
 
   function playerFor(id: string | null) {
     return id ? players.find((p) => p.id === id) : undefined;
-  }
-
-  function handleBuy(def: PropertyDef) {
-    if (!buyProperty(def.id)) {
-      toast.error("Couldn't buy — you're offline right now.", { icon: "📡" });
-      return;
-    }
-    toast.success(`Bought ${def.name} for ${formatCurrency(def.price, edition)}`, { icon: "🏠" });
-  }
-
-  function handleBuild(def: PropertyDef) {
-    if (!buildOnProperty(def.id)) {
-      const current = properties[def.id];
-      if (current?.hasHotel) {
-        toast.error("Already at a hotel — that's the maximum.");
-      } else if (totals.hotels >= TOTAL_HOTELS && current?.houses === 4) {
-        toast.error("No hotels left in the bank.");
-      } else if (totals.houses >= TOTAL_HOUSES) {
-        toast.error("No houses left in the bank.");
-      } else {
-        toast.error("Couldn't build — you're offline right now.", { icon: "📡" });
-      }
-      return;
-    }
-    toast.success(`Built on ${def.name}`, { icon: "🏗️" });
-  }
-
-  function handleSell(def: PropertyDef) {
-    if (!sellBuildingOnProperty(def.id)) {
-      toast.error("Couldn't sell — you're offline right now.", { icon: "📡" });
-      return;
-    }
-    toast.success(`Sold a building on ${def.name}`, { icon: "💰" });
   }
 
   return (
@@ -172,75 +137,49 @@ export function Properties() {
                 {visible.map((def) => {
                   const current = properties[def.id];
                   const owner = playerFor(current?.ownerId ?? null);
-                  const isMine = current?.ownerId === selfId;
 
                   return (
-                    <div
+                    <button
                       key={def.id}
-                      className="rounded-2xl border border-border-soft bg-surface p-4"
+                      onClick={() => setManagingPropertyId(def.id)}
+                      className="flex items-center justify-between gap-3 rounded-2xl border border-border-soft bg-surface p-4 text-left transition-colors active:scale-[0.98] hover:bg-surface-2"
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-bold text-text">{def.name}</div>
-                          <div className="mt-0.5 font-mono text-xs text-text-faint">
-                            {formatCurrency(def.price, edition)}
-                            {def.buildable && (
-                              <> · {formatCurrency(def.houseCost, edition)}/house</>
-                            )}
-                          </div>
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-bold text-text">{def.name}</div>
+                        <div className="mt-0.5 flex items-center gap-1.5 font-mono text-xs text-text-faint">
+                          {formatCurrency(def.price, edition)}
+                          {current?.mortgaged && (
+                            <span className="flex items-center gap-0.5 font-sans font-semibold text-red">
+                              <Lock className="h-3 w-3" />
+                              Mortgaged
+                            </span>
+                          )}
+                          {!current?.mortgaged && current?.hasHotel && (
+                            <span className="flex items-center gap-0.5 font-sans font-semibold text-gold">
+                              <Building2 className="h-3 w-3" />
+                              Hotel
+                            </span>
+                          )}
+                          {!current?.mortgaged && !current?.hasHotel && (current?.houses ?? 0) > 0 && (
+                            <span className="flex items-center gap-0.5 font-sans font-semibold text-text-muted">
+                              <Home className="h-3 w-3" />
+                              {current!.houses}/4
+                            </span>
+                          )}
                         </div>
-
-                        {owner ? (
-                          <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-border-soft bg-surface-2 py-1 pl-1 pr-2.5 text-xs font-semibold text-text-muted">
-                            <TokenBadge token={owner.token} size={20} />
-                            {owner.name}
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => handleBuy(def)}
-                            className="shrink-0 rounded-full bg-green px-3 py-1.5 text-xs font-bold text-[#06170F] transition-transform active:scale-95"
-                          >
-                            Buy
-                          </button>
-                        )}
                       </div>
 
-                      {isMine && def.buildable && (
-                        <div className="mt-3 flex items-center justify-between border-t border-border-soft pt-3">
-                          <div className="flex items-center gap-1.5">
-                            {current?.hasHotel ? (
-                              <span className="flex items-center gap-1 rounded-full bg-gold/15 px-2.5 py-1 text-xs font-bold text-gold">
-                                <Building2 className="h-3.5 w-3.5" />
-                                Hotel
-                              </span>
-                            ) : (
-                              <span className="flex items-center gap-1 text-xs font-semibold text-text-muted">
-                                <Home className="h-3.5 w-3.5" />
-                                {current?.houses ?? 0}/4 houses
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => handleSell(def)}
-                              disabled={!current || (current.houses === 0 && !current.hasHotel)}
-                              aria-label={`Sell a building on ${def.name}`}
-                              className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-3 text-text transition-colors hover:bg-surface-2 disabled:opacity-30"
-                            >
-                              <Minus className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleBuild(def)}
-                              disabled={current?.hasHotel}
-                              aria-label={`Build on ${def.name}`}
-                              className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-3 text-text transition-colors hover:bg-surface-2 disabled:opacity-30"
-                            >
-                              <Plus className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
+                      {owner ? (
+                        <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-border-soft bg-surface-2 py-1 pl-1 pr-2.5 text-xs font-semibold text-text-muted">
+                          <TokenBadge token={owner.token} size={20} />
+                          {owner.name}
                         </div>
+                      ) : (
+                        <span className="shrink-0 rounded-full border border-dashed border-border px-3 py-1.5 text-xs font-semibold text-text-faint">
+                          Unowned
+                        </span>
                       )}
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -248,6 +187,11 @@ export function Properties() {
           );
         })}
       </div>
+
+      <PropertyManageSheet
+        propertyId={managingPropertyId}
+        onClose={() => setManagingPropertyId(null)}
+      />
     </motion.div>
   );
 }

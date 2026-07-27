@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, Crown, Inbox } from "lucide-react";
+import { ArrowLeft, Building2, Crown, Home, Inbox, Lock } from "lucide-react";
 import { useGameStore } from "@/store/useGameStore";
 import { useDashboardStore } from "@/store/useDashboardStore";
 import { EDITIONS, formatCurrency } from "@/lib/locale";
 import { useAnimatedNumber } from "@/lib/useAnimatedNumber";
 import { computeBalanceHistory } from "@/lib/balanceHistory";
 import { isRecent } from "@/lib/ledger";
+import { COLOR_GROUP_SWATCH, propertyById } from "@/lib/properties";
 import { TokenBadge } from "@/components/icons/token-badge";
 import { BalanceSparkline } from "@/components/dashboard/BalanceSparkline";
 import { LedgerRow } from "@/components/dashboard/LedgerRow";
+import { PropertyManageSheet } from "@/components/properties/PropertyManageSheet";
 
 export function PlayerDetail() {
   const goTo = useGameStore((s) => s.goTo);
@@ -20,10 +22,18 @@ export function PlayerDetail() {
   const selfId = useDashboardStore((s) => s.selfId);
   const startedAt = useDashboardStore((s) => s.startedAt);
 
+  const properties = useDashboardStore((s) => s.properties);
+
   const edition = EDITIONS[editionId];
   const player = players.find((p) => p.id === selectedPlayerId);
   const displayBalance = useAnimatedNumber(player?.balance ?? 0);
   const [now, setNow] = useState(() => Date.now());
+  const [managingPropertyId, setManagingPropertyId] = useState<string | null>(null);
+
+  const ownedProperties = useMemo(
+    () => Object.values(properties).filter((p) => p.ownerId === player?.id),
+    [properties, player],
+  );
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 15_000);
@@ -95,6 +105,61 @@ export function PlayerDetail() {
           <BalanceSparkline points={history} edition={edition} />
         </section>
       )}
+
+      {ownedProperties.length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-text-faint">
+            Properties Owned
+          </h2>
+          <div className="flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {ownedProperties.map((prop) => {
+              const def = propertyById(editionId, prop.propertyId);
+              if (!def) return null;
+              const swatch = COLOR_GROUP_SWATCH[def.group];
+              return (
+                <button
+                  key={prop.propertyId}
+                  onClick={() => setManagingPropertyId(prop.propertyId)}
+                  className="flex shrink-0 flex-col items-start gap-2 text-left"
+                >
+                  <div
+                    className="flex h-28 w-32 shrink-0 flex-col items-center justify-center gap-2 rounded-2xl border-2 p-3 text-center transition-transform active:scale-95"
+                    style={{ borderColor: swatch, backgroundColor: `${swatch}1a` }}
+                  >
+                    {prop.mortgaged ? (
+                      <Lock className="h-6 w-6" style={{ color: swatch }} />
+                    ) : prop.hasHotel ? (
+                      <Building2 className="h-6 w-6" style={{ color: swatch }} />
+                    ) : (
+                      <Home className="h-6 w-6" style={{ color: swatch }} />
+                    )}
+                    <span
+                      className="line-clamp-2 text-xs font-extrabold leading-tight"
+                      style={{ color: swatch }}
+                    >
+                      {def.name}
+                    </span>
+                  </div>
+                  <div className="w-32 text-xs text-text-faint">
+                    {prop.mortgaged
+                      ? "Mortgaged"
+                      : prop.hasHotel
+                        ? "Hotel"
+                        : prop.houses > 0
+                          ? `${prop.houses} house${prop.houses > 1 ? "s" : ""}`
+                          : "No buildings yet"}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      <PropertyManageSheet
+        propertyId={managingPropertyId}
+        onClose={() => setManagingPropertyId(null)}
+      />
 
       <section>
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-text-faint">

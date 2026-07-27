@@ -131,6 +131,9 @@ export const proposeEvent: MessageHandler = (ws, { gameId, userToken }, message)
         if (event.hasHotel && event.houses !== 0) {
           return; // A hotel replaces the 4 houses; they can't coexist
         }
+        if (event.mortgaged && (event.houses > 0 || event.hasHotel)) {
+          return; // Can't have buildings on a mortgaged property
+        }
 
         const gameState = game.getGameState();
         const currentOwner = gameState.properties[event.propertyId]?.ownerId ?? null;

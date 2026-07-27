@@ -13,6 +13,7 @@ import {
   type Direction,
   type TransactionTypeId,
 } from "@/lib/transactionTypes";
+import { PROPERTIES } from "@/lib/properties";
 import { TokenBadge } from "@/components/icons/token-badge";
 import { Keypad } from "@/components/transaction/Keypad";
 import { cn } from "@/lib/utils";
@@ -39,6 +40,8 @@ export function TransactionSheet({
   const selfId = useDashboardStore((s) => s.selfId);
   const editionId = useDashboardStore((s) => s.edition);
   const sendTransaction = useDashboardStore((s) => s.sendTransaction);
+  const buyProperty = useDashboardStore((s) => s.buyProperty);
+  const ownedProperties = useDashboardStore((s) => s.properties);
   const isOnline = useDashboardStore((s) => s.connectionStatus === "connected");
   const edition = EDITIONS[editionId];
 
@@ -49,7 +52,11 @@ export function TransactionSheet({
   const [recipientId, setRecipientId] = useState<string | null>(null);
   const [amount, setAmount] = useState(0);
   const [memo, setMemo] = useState("");
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const [flying, setFlying] = useState<FlyState | null>(null);
+
+  const isBuyProperty = typeId === "buy-property";
+  const unownedProperties = PROPERTIES[editionId].filter((p) => !ownedProperties[p.id]?.ownerId);
 
   const amountRef = useRef<HTMLDivElement>(null);
   const bankBadgeRef = useRef<HTMLButtonElement>(null);
@@ -73,6 +80,7 @@ export function TransactionSheet({
     setRecipientId(null);
     setAmount(0);
     setMemo("");
+    setSelectedPropertyId(null);
     setFlying(null);
   }
 
@@ -90,7 +98,14 @@ export function TransactionSheet({
     setRecipientId(isBankPayoutForBanker ? selfId : null);
     setAmount(0);
     setMemo("");
+    setSelectedPropertyId(null);
     setStep("details");
+  }
+
+  function selectProperty(propertyId: string, price: number, name: string) {
+    setSelectedPropertyId(propertyId);
+    setAmount(price);
+    setMemo(name);
   }
 
   function handleKey(key: string) {
@@ -112,6 +127,7 @@ export function TransactionSheet({
   const canSend =
     isOnline &&
     amount > 0 &&
+    (isBuyProperty ? !!selectedPropertyId : true) &&
     (bankPaysAnyPlayer
       ? !!recipientId
       : counterparty === "bank" || (counterparty === "player" && recipientId));
@@ -151,7 +167,9 @@ export function TransactionSheet({
 
   function commit(legs: { fromId: string; toId: string }) {
     if (!type) return;
-    const sent = sendTransaction({ type: type.id, fromId: legs.fromId, toId: legs.toId, amount, memo });
+    const sent = isBuyProperty
+      ? buyProperty(selectedPropertyId!)
+      : sendTransaction({ type: type.id, fromId: legs.fromId, toId: legs.toId, amount, memo });
 
     if (!sent) {
       toast.error("Couldn't send — you're offline. Try again once you're back online.", {
@@ -161,7 +179,9 @@ export function TransactionSheet({
       return;
     }
 
-    if (legs.toId === selfId) {
+    if (isBuyProperty) {
+      toast.success(`Bought ${memo} for ${formatCurrency(amount, edition)}`, { icon: "🏠" });
+    } else if (legs.toId === selfId) {
       toast.success(`Received ${formatCurrency(amount, edition)}`, { icon: "💸" });
     } else if (legs.fromId === selfId) {
       toast.success(`Sent ${formatCurrency(amount, edition)}`, { icon: "💸" });
@@ -367,12 +387,48 @@ export function TransactionSheet({
                       </div>
                     </div>
 
-                    <input
-                      value={memo}
-                      onChange={(e) => setMemo(e.target.value)}
-                      placeholder={type.memoPlaceholder}
-                      className="mb-5 h-11 w-full rounded-xl border border-border-soft bg-surface-2 px-3.5 text-sm font-medium text-text outline-none placeholder:text-text-faint focus:border-gold focus:ring-2 focus:ring-focus"
-                    />
+                    {isBuyProperty ? (
+                      <div className="mb-5">
+                        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-text-faint">
+                          Which property?
+                        </div>
+                        {unownedProperties.length === 0 ? (
+                          <p className="rounded-xl border border-dashed border-border px-3.5 py-3 text-sm text-text-faint">
+                            Every property is already owned.
+                          </p>
+                        ) : (
+                          <div className="grid max-h-52 grid-cols-2 gap-2 overflow-y-auto pr-1">
+                            {unownedProperties.map((p) => (
+                              <button
+                                key={p.id}
+                                onClick={() => selectProperty(p.id, p.price, p.name)}
+                                aria-pressed={selectedPropertyId === p.id}
+                                className={cn(
+                                  "rounded-xl border px-3 py-2.5 text-left transition-colors",
+                                  selectedPropertyId === p.id
+                                    ? "border-gold bg-gold/10"
+                                    : "border-border-soft bg-surface-2 hover:bg-surface-3",
+                                )}
+                              >
+                                <div className="truncate text-xs font-bold text-text">
+                                  {p.name}
+                                </div>
+                                <div className="mt-0.5 font-mono text-xs text-text-faint">
+                                  {formatCurrency(p.price, edition)}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <input
+                        value={memo}
+                        onChange={(e) => setMemo(e.target.value)}
+                        placeholder={type.memoPlaceholder}
+                        className="mb-5 h-11 w-full rounded-xl border border-border-soft bg-surface-2 px-3.5 text-sm font-medium text-text outline-none placeholder:text-text-faint focus:border-gold focus:ring-2 focus:ring-focus"
+                      />
+                    )}
 
                     <div
                       ref={amountRef}
@@ -382,25 +438,29 @@ export function TransactionSheet({
                       {formatAmount(amount, edition)}
                     </div>
 
-                    <div className="mb-4 flex justify-center gap-2">
-                      {edition.quickAmounts.map((q) => (
-                        <button
-                          key={q}
-                          onClick={() => addQuick(q)}
-                          className="rounded-full border border-border-soft bg-surface-2 px-3.5 py-1.5 font-mono text-xs font-bold text-text-muted transition-colors hover:bg-surface-3 hover:text-text active:scale-95"
-                        >
-                          +{formatAmount(q, edition)}
-                        </button>
-                      ))}
-                      <button
-                        onClick={() => setAmount(0)}
-                        className="rounded-full border border-dashed border-border px-3 py-1.5 text-xs font-semibold text-text-faint hover:text-text"
-                      >
-                        Clear
-                      </button>
-                    </div>
+                    {!isBuyProperty && (
+                      <>
+                        <div className="mb-4 flex justify-center gap-2">
+                          {edition.quickAmounts.map((q) => (
+                            <button
+                              key={q}
+                              onClick={() => addQuick(q)}
+                              className="rounded-full border border-border-soft bg-surface-2 px-3.5 py-1.5 font-mono text-xs font-bold text-text-muted transition-colors hover:bg-surface-3 hover:text-text active:scale-95"
+                            >
+                              +{formatAmount(q, edition)}
+                            </button>
+                          ))}
+                          <button
+                            onClick={() => setAmount(0)}
+                            className="rounded-full border border-dashed border-border px-3 py-1.5 text-xs font-semibold text-text-faint hover:text-text"
+                          >
+                            Clear
+                          </button>
+                        </div>
 
-                    <Keypad onKey={handleKey} />
+                        <Keypad onKey={handleKey} />
+                      </>
+                    )}
 
                     {!isOnline && (
                       <p className="mt-4 text-center text-xs font-semibold text-gold">
@@ -418,7 +478,13 @@ export function TransactionSheet({
                           : "cursor-not-allowed bg-surface-2 text-text-faint",
                       )}
                     >
-                      {bankPaysAnyPlayer ? "Pay Out" : direction === "pay" ? "Send" : "Confirm"}{" "}
+                      {isBuyProperty
+                        ? "Buy"
+                        : bankPaysAnyPlayer
+                          ? "Pay Out"
+                          : direction === "pay"
+                            ? "Send"
+                            : "Confirm"}{" "}
                       {amount > 0 && formatCurrency(amount, edition)}
                     </button>
                   </motion.div>

@@ -19,6 +19,7 @@ export interface IGameStateProperty {
   ownerId: PlayerId | null;
   houses: number; // 0-4; a hotel replaces these, so houses is always 0 once hasHotel is true
   hasHotel: boolean;
+  mortgaged: boolean;
 }
 
 export interface IGameState {
@@ -120,4 +121,5 @@ export interface IPropertyStateChangeEvent extends IGameEvent {
   ownerId: PlayerId | null;
   houses: number;
   hasHotel: boolean;
+  mortgaged: boolean;
 }

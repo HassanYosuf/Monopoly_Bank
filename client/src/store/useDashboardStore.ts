@@ -25,6 +25,7 @@ export interface RuntimeProperty {
   ownerId: string | null;
   houses: number;
   hasHotel: boolean;
+  mortgaged: boolean;
 }
 
 export interface Transaction {
@@ -81,8 +82,11 @@ interface DashboardState {
   passGo: () => boolean;
   toggleLocked: () => boolean;
   buyProperty: (propertyId: string) => boolean;
+  claimPropertyViaAuction: (propertyId: string, amount: number) => boolean;
   buildOnProperty: (propertyId: string) => boolean;
   sellBuildingOnProperty: (propertyId: string) => boolean;
+  mortgageProperty: (propertyId: string) => boolean;
+  unmortgageProperty: (propertyId: string) => boolean;
   endGame: () => boolean;
   disputeTransaction: (id: string) => boolean;
   clearPulse: (playerId: string) => void;
@@ -366,6 +370,37 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         ownerId: state.selfId,
         houses: 0,
         hasHotel: false,
+        mortgaged: false,
+      };
+      socket?.proposeEvent(event);
+      return true;
+    },
+
+    // A property that was declined and auctioned off at the table — same
+    // as buying, except the amount is whatever it went for (can be above or
+    // below list price), entered by whoever's tracking the auction.
+    claimPropertyViaAuction: (propertyId, amount) => {
+      const state = get();
+      if (!state.selfId || state.connectionStatus !== "connected") return false;
+      const def = propertyById(state.edition, propertyId);
+      if (!def || amount <= 0) return false;
+      if (state.properties[propertyId]?.ownerId) return false; // already owned
+
+      state.sendTransaction({
+        type: "buy-property",
+        fromId: state.selfId,
+        toId: BANK_ID,
+        amount,
+        memo: `${def.name} (auction)`,
+      });
+      const event: GameEvent = {
+        ...eventBase(state.selfId),
+        type: "propertyStateChange",
+        propertyId,
+        ownerId: state.selfId,
+        houses: 0,
+        hasHotel: false,
+        mortgaged: false,
       };
       socket?.proposeEvent(event);
       return true;
@@ -377,7 +412,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
       const def = propertyById(state.edition, propertyId);
       if (!def || !def.buildable) return false;
       const current = state.properties[propertyId];
-      if (!current || current.ownerId !== state.selfId || current.hasHotel) return false;
+      if (!current || current.ownerId !== state.selfId || current.hasHotel || current.mortgaged) {
+        return false;
+      }
 
       const nextHouses = current.houses < 4 ? current.houses + 1 : 0;
       const nextHasHotel = current.houses === 4;
@@ -412,6 +449,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         ownerId: current.ownerId,
         houses: nextHouses,
         hasHotel: nextHasHotel,
+        mortgaged: false,
       };
       socket?.proposeEvent(event);
       return true;
@@ -443,6 +481,71 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         ownerId: current.ownerId,
         houses: nextHouses,
         hasHotel: false,
+        mortgaged: false,
+      };
+      socket?.proposeEvent(event);
+      return true;
+    },
+
+    // Standard rule: a mortgaged property must have no houses/hotel on it,
+    // pays out half its list price, and can't collect rent while mortgaged
+    // (this app doesn't calculate rent automatically, so that part is just
+    // on the players' honor, same as everything else money-related here).
+    mortgageProperty: (propertyId) => {
+      const state = get();
+      if (!state.selfId || state.connectionStatus !== "connected") return false;
+      const def = propertyById(state.edition, propertyId);
+      if (!def) return false;
+      const current = state.properties[propertyId];
+      if (!current || current.ownerId !== state.selfId) return false;
+      if (current.houses > 0 || current.hasHotel || current.mortgaged) return false;
+
+      const mortgageValue = Math.floor(def.price / 2);
+      state.sendTransaction({
+        type: "mortgage",
+        fromId: BANK_ID,
+        toId: state.selfId,
+        amount: mortgageValue,
+        memo: `Mortgaged — ${def.name}`,
+      });
+      const event: GameEvent = {
+        ...eventBase(state.selfId),
+        type: "propertyStateChange",
+        propertyId,
+        ownerId: current.ownerId,
+        houses: 0,
+        hasHotel: false,
+        mortgaged: true,
+      };
+      socket?.proposeEvent(event);
+      return true;
+    },
+
+    // Standard rule: pay back the mortgage value plus 10% interest to lift it.
+    unmortgageProperty: (propertyId) => {
+      const state = get();
+      if (!state.selfId || state.connectionStatus !== "connected") return false;
+      const def = propertyById(state.edition, propertyId);
+      if (!def) return false;
+      const current = state.properties[propertyId];
+      if (!current || current.ownerId !== state.selfId || !current.mortgaged) return false;
+
+      const payoff = Math.ceil((def.price / 2) * 1.1);
+      state.sendTransaction({
+        type: "mortgage",
+        fromId: state.selfId,
+        toId: BANK_ID,
+        amount: payoff,
+        memo: `Unmortgaged — ${def.name}`,
+      });
+      const event: GameEvent = {
+        ...eventBase(state.selfId),
+        type: "propertyStateChange",
+        propertyId,
+        ownerId: current.ownerId,
+        houses: 0,
+        hasHotel: false,
+        mortgaged: false,
       };
       socket?.proposeEvent(event);
       return true;

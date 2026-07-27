@@ -39,7 +39,7 @@ export const calculateGameState = (events: GameEvent[], currentState: IGameState
             const property = state.properties[id];
             acc[id] =
               property.ownerId === event.playerId
-                ? { ...property, ownerId: null, houses: 0, hasHotel: false }
+                ? { ...property, ownerId: null, houses: 0, hasHotel: false, mortgaged: false }
                 : property;
             return acc;
           }, {} as IGameState["properties"])
@@ -175,7 +175,8 @@ export const calculateGameState = (events: GameEvent[], currentState: IGameState
               propertyId: event.propertyId,
               ownerId: event.ownerId,
               houses: event.houses,
-              hasHotel: event.hasHotel
+              hasHotel: event.hasHotel,
+              mortgaged: event.mortgaged
             }
           }
         };
