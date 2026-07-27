@@ -50,20 +50,25 @@ function App() {
 
   useEffect(() => {
     const code = parseJoinCodeFromLocation();
+    const session = loadSession();
+
+    // Reopening the exact game you already have a player in (closed the tab
+    // and came back via the same share link, or just the bare URL) should
+    // resume that player, not run the join flow and mint a brand-new one —
+    // the server has no other way to recognise a returning player.
+    if (session && (!code || code === session.gameId)) {
+      useDashboardStore.getState().connect(session);
+      goTo("resuming");
+      if (code) window.history.replaceState(null, "", "/");
+      return;
+    }
+
     if (code) {
       // The code came from a trusted share link, not user keystrokes — skip
       // the "enter the code" screen entirely and go straight to naming
       // yourself, same as if they'd typed and submitted it themselves.
       submitJoinCode(code);
       window.history.replaceState(null, "", "/");
-      return;
-    }
-    // No explicit deep-link — if we were mid-game before this tab/app was
-    // last closed, silently pick back up instead of starting from scratch.
-    const session = loadSession();
-    if (session) {
-      useDashboardStore.getState().connect(session);
-      goTo("resuming");
     }
     // Only makes sense against the state the app booted with.
     // eslint-disable-next-line react-hooks/exhaustive-deps
