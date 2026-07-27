@@ -10,3 +10,7 @@ services:
     envVars:
       - key: SERVER_ALLOWED_ORIGINS
         value: https://monopoly-bank-x67u.vercel.app
+      - key: SUPABASE_URL
+        value: https://snfexzslpslcsffnqqwf.supabase.co
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false

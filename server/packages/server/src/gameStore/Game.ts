@@ -16,6 +16,11 @@ import {
   OutgoingMessage
 } from "../api/dto";
 import { generateRandomId, generateTimeBasedId, getCurrentTime } from "./utils";
+import {
+  deleteGamePersistence,
+  persistEvent,
+  persistPlayerToken
+} from "../persistence/supabase";
 
 export default class Game {
   private events: GameEvent[] = []; // Events in this game
@@ -23,12 +28,29 @@ export default class Game {
   private userTokenToPlayers: Record<string, PlayerId> = {}; // A mapping of ids only known by a user to match to a player
   private gameState: IGameState;
 
+  private gameId: string;
   private deleteInstance: () => void;
 
-  constructor(deleteInstance: () => void, edition: string) {
+  constructor(gameId: string, deleteInstance: () => void, edition: string) {
+    this.gameId = gameId;
     this.deleteInstance = deleteInstance;
     this.gameState = { ...defaultGameState, edition };
   }
+
+  // Rebuilds a game from its persisted event log at server boot — replays
+  // events without re-persisting them (already in the database) and
+  // restores the userToken map, which never appears in the event log
+  // itself since userTokens are only ever kept in server memory.
+  public restoreFromPersistence = (
+    events: GameEvent[],
+    tokens: Array<{ userToken: string; playerId: string }>
+  ) => {
+    this.events = events;
+    this.gameState = calculateGameState(events, this.gameState);
+    tokens.forEach(({ userToken, playerId }) => {
+      this.userTokenToPlayers[userToken] = playerId;
+    });
+  };
 
   // Check if a game is open
   public isGameOpen = () => this.gameState.open;
@@ -65,6 +87,7 @@ export default class Game {
 
     // Map the user token to the player id
     this.userTokenToPlayers[userToken] = playerId;
+    void persistPlayerToken(this.gameId, userToken, playerId);
 
     return { userToken, playerId };
   };
@@ -171,6 +194,7 @@ export default class Game {
     });
 
     // Delete the game
+    void deleteGamePersistence(this.gameId);
     this.deleteInstance();
   };
 
@@ -184,6 +208,8 @@ export default class Game {
     // Construct message and sent to all players
     const outgoingMessage: INewEventMessage = { type: "newEvent", event };
     this.sendMessageToAllInGame(outgoingMessage);
+
+    void persistEvent(this.gameId, event);
   };
 
   // Send a message to all listening websockets

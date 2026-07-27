@@ -6,6 +6,7 @@ import * as http from "http";
 import path from "path";
 import { GameRoutes, gameSubRoute, RestoreRoutes, restoreSubRoute, setupWebsocketAPI } from "./api";
 import config from "./config";
+import gameStore from "./gameStore";
 
 const app = express();
 const server = http.createServer(app);
@@ -50,7 +51,14 @@ app.use(restoreSubRoute, RestoreRoutes);
 // Websocket handler
 setupWebsocketAPI(server);
 
-// Start server
-server.listen(config.server.port, () => {
-  console.log(`Listening on ${config.server.port}`);
+// Recover any games that existed before this process started (e.g. a host's
+// idle spin-down), then start accepting connections. Everything else in the
+// app stays synchronous against the in-memory store — this is the only
+// place that awaits persistence.
+gameStore.rehydrate().then((count) => {
+  if (count > 0) console.log(`Restored ${count} game(s) from persistence`);
+
+  server.listen(config.server.port, () => {
+    console.log(`Listening on ${config.server.port}`);
+  });
 });
