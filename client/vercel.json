@@ -1,3 +1,4 @@
 {
+  "installCommand": "npm install --prefix ../server/packages/game-state && npm run build --prefix ../server/packages/game-state && npm install",
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }

@@ -1,10 +1,12 @@
+import { EDITIONS, type EditionId } from "@/lib/locale";
+
 const STORAGE_KEY = "monopoly-bank-session";
 
 export interface StoredSession {
   gameId: string;
   userToken: string;
   playerId: string;
-  edition: string;
+  edition: EditionId;
 }
 
 export function saveSession(session: StoredSession) {
@@ -24,7 +26,8 @@ export function loadSession(): StoredSession | null {
       typeof parsed.gameId === "string" &&
       typeof parsed.userToken === "string" &&
       typeof parsed.playerId === "string" &&
-      typeof parsed.edition === "string"
+      typeof parsed.edition === "string" &&
+      parsed.edition in EDITIONS
     ) {
       return parsed as StoredSession;
     }
