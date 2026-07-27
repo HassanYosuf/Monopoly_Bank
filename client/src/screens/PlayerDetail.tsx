@@ -23,6 +23,7 @@ export function PlayerDetail() {
   const startedAt = useDashboardStore((s) => s.startedAt);
 
   const properties = useDashboardStore((s) => s.properties);
+  const trackProperties = useDashboardStore((s) => s.trackProperties);
 
   const edition = EDITIONS[editionId];
   const player = players.find((p) => p.id === selectedPlayerId);
@@ -106,7 +107,7 @@ export function PlayerDetail() {
         </section>
       )}
 
-      {ownedProperties.length > 0 && (
+      {trackProperties && ownedProperties.length > 0 && (
         <section className="mb-8">
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-text-faint">
             Properties Owned

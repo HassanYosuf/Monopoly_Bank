@@ -65,6 +65,11 @@ interface DashboardState {
   transactions: Transaction[];
   isLocked: boolean;
   properties: Record<string, RuntimeProperty>;
+  // Shared house-rule opt-outs — synced game state, not a per-device
+  // setting, so every player agrees on what's actually in play.
+  trackProperties: boolean;
+  allowAuction: boolean;
+  useFreeParking: boolean;
   startedAt: number | null;
   status: "active" | "ended";
   lastActivity: Record<string, number>;
@@ -87,6 +92,9 @@ interface DashboardState {
   sellBuildingOnProperty: (propertyId: string) => boolean;
   mortgageProperty: (propertyId: string) => boolean;
   unmortgageProperty: (propertyId: string) => boolean;
+  setTrackProperties: (value: boolean) => boolean;
+  setAllowAuction: (value: boolean) => boolean;
+  setFreeParkingJackpot: (value: boolean) => boolean;
   endGame: () => boolean;
   disputeTransaction: (id: string) => boolean;
   clearPulse: (playerId: string) => void;
@@ -143,7 +151,15 @@ function deriveFromEvents(rawEvents: GameEvent[]) {
     isBankrupt: p.balance < 0,
   }));
 
-  return { gameState, transactions, players, properties: gameState.properties };
+  return {
+    gameState,
+    transactions,
+    players,
+    properties: gameState.properties,
+    trackProperties: gameState.trackProperties,
+    allowAuction: gameState.allowAuction,
+    useFreeParking: gameState.useFreeParking,
+  };
 }
 
 function eventBase(actionedBy: string) {
@@ -191,7 +207,8 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
 
   function applyDerivedUpdate(isIncremental: boolean) {
     const prevPlayers = get().players;
-    const { transactions, players, gameState, properties } = deriveFromEvents(rawEvents);
+    const { transactions, players, gameState, properties, trackProperties, allowAuction, useFreeParking } =
+      deriveFromEvents(rawEvents);
 
     const pulses = { ...get().pulses };
     const lastActivity = { ...get().lastActivity };
@@ -228,6 +245,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
       isLocked: !gameState.open,
       bankBalance,
       properties,
+      trackProperties,
+      allowAuction,
+      useFreeParking,
       hasSynced: true,
     });
 
@@ -243,6 +263,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
     transactions: [],
     isLocked: false,
     properties: {},
+    trackProperties: true,
+    allowAuction: true,
+    useFreeParking: true,
     startedAt: null,
     status: "active",
     lastActivity: {},
@@ -269,6 +292,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         pulses: {},
         lastActivity: {},
         properties: {},
+        trackProperties: true,
+        allowAuction: true,
+        useFreeParking: true,
         bankBalance: 0,
         connectionStatus: "connecting",
         hasSynced: false,
@@ -351,7 +377,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
 
     buyProperty: (propertyId) => {
       const state = get();
-      if (!state.selfId || state.connectionStatus !== "connected") return false;
+      if (!state.selfId || state.connectionStatus !== "connected" || !state.trackProperties) {
+        return false;
+      }
       const def = propertyById(state.edition, propertyId);
       if (!def) return false;
       if (state.properties[propertyId]?.ownerId) return false; // already owned
@@ -381,7 +409,14 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
     // below list price), entered by whoever's tracking the auction.
     claimPropertyViaAuction: (propertyId, amount) => {
       const state = get();
-      if (!state.selfId || state.connectionStatus !== "connected") return false;
+      if (
+        !state.selfId ||
+        state.connectionStatus !== "connected" ||
+        !state.trackProperties ||
+        !state.allowAuction
+      ) {
+        return false;
+      }
       const def = propertyById(state.edition, propertyId);
       if (!def || amount <= 0) return false;
       if (state.properties[propertyId]?.ownerId) return false; // already owned
@@ -408,7 +443,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
 
     buildOnProperty: (propertyId) => {
       const state = get();
-      if (!state.selfId || state.connectionStatus !== "connected") return false;
+      if (!state.selfId || state.connectionStatus !== "connected" || !state.trackProperties) {
+        return false;
+      }
       const def = propertyById(state.edition, propertyId);
       if (!def || !def.buildable) return false;
       const current = state.properties[propertyId];
@@ -457,7 +494,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
 
     sellBuildingOnProperty: (propertyId) => {
       const state = get();
-      if (!state.selfId || state.connectionStatus !== "connected") return false;
+      if (!state.selfId || state.connectionStatus !== "connected" || !state.trackProperties) {
+        return false;
+      }
       const def = propertyById(state.edition, propertyId);
       if (!def) return false;
       const current = state.properties[propertyId];
@@ -493,7 +532,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
     // on the players' honor, same as everything else money-related here).
     mortgageProperty: (propertyId) => {
       const state = get();
-      if (!state.selfId || state.connectionStatus !== "connected") return false;
+      if (!state.selfId || state.connectionStatus !== "connected" || !state.trackProperties) {
+        return false;
+      }
       const def = propertyById(state.edition, propertyId);
       if (!def) return false;
       const current = state.properties[propertyId];
@@ -521,10 +562,48 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
       return true;
     },
 
+    setTrackProperties: (value) => {
+      const state = get();
+      if (!state.selfId || state.connectionStatus !== "connected") return false;
+      const event: GameEvent = {
+        ...eventBase(state.selfId),
+        type: "trackPropertiesChange",
+        trackProperties: value,
+      };
+      socket?.proposeEvent(event);
+      return true;
+    },
+
+    setAllowAuction: (value) => {
+      const state = get();
+      if (!state.selfId || state.connectionStatus !== "connected") return false;
+      const event: GameEvent = {
+        ...eventBase(state.selfId),
+        type: "allowAuctionChange",
+        allowAuction: value,
+      };
+      socket?.proposeEvent(event);
+      return true;
+    },
+
+    setFreeParkingJackpot: (value) => {
+      const state = get();
+      if (!state.selfId || state.connectionStatus !== "connected") return false;
+      const event: GameEvent = {
+        ...eventBase(state.selfId),
+        type: "useFreeParkingChange",
+        useFreeParking: value,
+      };
+      socket?.proposeEvent(event);
+      return true;
+    },
+
     // Standard rule: pay back the mortgage value plus 10% interest to lift it.
     unmortgageProperty: (propertyId) => {
       const state = get();
-      if (!state.selfId || state.connectionStatus !== "connected") return false;
+      if (!state.selfId || state.connectionStatus !== "connected" || !state.trackProperties) {
+        return false;
+      }
       const def = propertyById(state.edition, propertyId);
       if (!def) return false;
       const current = state.properties[propertyId];

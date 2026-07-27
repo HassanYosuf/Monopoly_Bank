@@ -42,6 +42,7 @@ export function TransactionSheet({
   const sendTransaction = useDashboardStore((s) => s.sendTransaction);
   const buyProperty = useDashboardStore((s) => s.buyProperty);
   const ownedProperties = useDashboardStore((s) => s.properties);
+  const trackProperties = useDashboardStore((s) => s.trackProperties);
   const isOnline = useDashboardStore((s) => s.connectionStatus === "connected");
   const edition = EDITIONS[editionId];
 
@@ -55,7 +56,10 @@ export function TransactionSheet({
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const [flying, setFlying] = useState<FlyState | null>(null);
 
-  const isBuyProperty = typeId === "buy-property";
+  // When the "track properties" house rule is off, Buy Property just
+  // behaves like every other free-text transaction — no mandatory picker,
+  // no ownership event.
+  const isBuyProperty = typeId === "buy-property" && trackProperties;
   const unownedProperties = PROPERTIES[editionId].filter((p) => !ownedProperties[p.id]?.ownerId);
 
   const amountRef = useRef<HTMLDivElement>(null);

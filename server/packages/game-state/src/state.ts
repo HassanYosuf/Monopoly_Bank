@@ -7,7 +7,9 @@ export const defaultGameState: IGameState = {
   useFreeParking: true,
   showOppositionBalances: true,
   freeParkingBalance: 0,
-  open: true
+  open: true,
+  trackProperties: true,
+  allowAuction: true
 };
 
 export const calculateGameState = (events: GameEvent[], currentState: IGameState): IGameState => {
@@ -179,6 +181,18 @@ export const calculateGameState = (events: GameEvent[], currentState: IGameState
               mortgaged: event.mortgaged
             }
           }
+        };
+
+      case "trackPropertiesChange":
+        return {
+          ...state,
+          trackProperties: event.trackProperties
+        };
+
+      case "allowAuctionChange":
+        return {
+          ...state,
+          allowAuction: event.allowAuction
         };
     }
   }, currentState);

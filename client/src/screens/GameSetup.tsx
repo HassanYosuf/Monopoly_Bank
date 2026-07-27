@@ -229,6 +229,12 @@ export function GameSetup() {
   const updateRule = useGameStore((s) => s.updateRule);
   const editionId = useDashboardStore((s) => s.edition);
   const players = useDashboardStore((s) => s.players);
+  const useFreeParking = useDashboardStore((s) => s.useFreeParking);
+  const setFreeParkingJackpot = useDashboardStore((s) => s.setFreeParkingJackpot);
+  const trackProperties = useDashboardStore((s) => s.trackProperties);
+  const setTrackProperties = useDashboardStore((s) => s.setTrackProperties);
+  const allowAuction = useDashboardStore((s) => s.allowAuction);
+  const setAllowAuction = useDashboardStore((s) => s.setAllowAuction);
   const edition = EDITIONS[editionId];
 
   return (
@@ -292,8 +298,8 @@ export function GameSetup() {
           <RuleToggle
             label="Free Parking jackpot"
             description="Taxes and fines pool up and pay out to whoever lands on Free Parking."
-            checked={rules.freeParkingJackpot}
-            onCheckedChange={(v) => updateRule("freeParkingJackpot", v)}
+            checked={useFreeParking}
+            onCheckedChange={(v) => setFreeParkingJackpot(v)}
           />
           <RuleToggle
             label="Speed Die"
@@ -305,6 +311,19 @@ export function GameSetup() {
             checked={rules.speedDie}
             onCheckedChange={(v) => updateRule("speedDie", v)}
             disabled={!edition.supportsSpeedDie}
+          />
+          <RuleToggle
+            label="Track properties"
+            description="Buying requires picking a real property, and houses/hotels build up per-property. Turn off to just use free-text money transfers instead."
+            checked={trackProperties}
+            onCheckedChange={(v) => setTrackProperties(v)}
+          />
+          <RuleToggle
+            label="Allow auctions"
+            description="A declined property can be claimed by anyone at whatever it went for at the table."
+            checked={allowAuction}
+            onCheckedChange={(v) => setAllowAuction(v)}
+            disabled={!trackProperties}
           />
         </div>
       </section>

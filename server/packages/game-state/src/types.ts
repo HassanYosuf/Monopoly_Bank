@@ -30,6 +30,11 @@ export interface IGameState {
   showOppositionBalances: boolean;
   freeParkingBalance: number;
   open: boolean;
+  // House-rule opt-outs — shared across every player rather than a
+  // per-device setting, since inconsistent devices would disagree about
+  // what's even allowed.
+  trackProperties: boolean;
+  allowAuction: boolean;
 }
 
 // Game events
@@ -45,7 +50,9 @@ export type GameEvent =
   | IUseFreeParkingChangeEvent
   | IShowOppositionBalancesChangeEvent
   | IPlayerConnectionChangeEvent
-  | IPropertyStateChangeEvent;
+  | IPropertyStateChangeEvent
+  | ITrackPropertiesChangeEvent
+  | IAllowAuctionChangeEvent;
 
 export interface IGameEvent {
   id: string;
@@ -122,4 +129,14 @@ export interface IPropertyStateChangeEvent extends IGameEvent {
   houses: number;
   hasHotel: boolean;
   mortgaged: boolean;
+}
+
+export interface ITrackPropertiesChangeEvent extends IGameEvent {
+  type: "trackPropertiesChange";
+  trackProperties: boolean;
+}
+
+export interface IAllowAuctionChangeEvent extends IGameEvent {
+  type: "allowAuctionChange";
+  allowAuction: boolean;
 }

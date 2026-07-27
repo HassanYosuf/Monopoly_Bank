@@ -136,6 +136,9 @@ export const proposeEvent: MessageHandler = (ws, { gameId, userToken }, message)
         }
 
         const gameState = game.getGameState();
+        if (!gameState.trackProperties) {
+          return; // This game has opted out of structured property tracking
+        }
         const currentOwner = gameState.properties[event.propertyId]?.ownerId ?? null;
         const isSelf = event.ownerId === playerId;
         const isCurrentOwner = currentOwner === playerId;
@@ -157,6 +160,12 @@ export const proposeEvent: MessageHandler = (ws, { gameId, userToken }, message)
         }
         break;
       }
+      case "trackPropertiesChange":
+      case "allowAuctionChange":
+        if (!isPlayerBanker) {
+          return; // Only the banker can change house rules
+        }
+        break;
     }
 
     game.addEvent(event, playerId);

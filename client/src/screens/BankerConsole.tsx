@@ -3,10 +3,12 @@ import { motion } from "framer-motion";
 import {
   ArrowLeft,
   Building2,
+  Gavel,
   Home,
   Lock,
   LogOut,
   ShieldAlert,
+  Sparkles,
   Unlock,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -186,11 +188,53 @@ function InventorySummary({
   );
 }
 
+function RuleRow({
+  icon,
+  label,
+  description,
+  checked,
+  onCheckedChange,
+  disabled,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  description: string;
+  checked: boolean;
+  onCheckedChange: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4 rounded-2xl border border-border-soft bg-surface p-4">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-3 text-text-muted">
+          {icon}
+        </div>
+        <div>
+          <div className="text-sm font-bold text-text">{label}</div>
+          <div className="mt-0.5 text-sm text-text-muted">{description}</div>
+        </div>
+      </div>
+      <Switch
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+        disabled={disabled}
+        className="mt-1 shrink-0"
+      />
+    </div>
+  );
+}
+
 export function BankerConsole() {
   const goTo = useGameStore((s) => s.goTo);
   const isLocked = useDashboardStore((s) => s.isLocked);
   const toggleLocked = useDashboardStore((s) => s.toggleLocked);
   const properties = useDashboardStore((s) => s.properties);
+  const useFreeParking = useDashboardStore((s) => s.useFreeParking);
+  const setFreeParkingJackpot = useDashboardStore((s) => s.setFreeParkingJackpot);
+  const trackProperties = useDashboardStore((s) => s.trackProperties);
+  const setTrackProperties = useDashboardStore((s) => s.setTrackProperties);
+  const allowAuction = useDashboardStore((s) => s.allowAuction);
+  const setAllowAuction = useDashboardStore((s) => s.setAllowAuction);
   const endGame = useDashboardStore((s) => s.endGame);
 
   const built = Object.values(properties).reduce(
@@ -209,6 +253,12 @@ export function BankerConsole() {
     // actually moves everyone to the summary — this just gets the banker
     // there without waiting on their own echo.
     goTo("end-game");
+  }
+
+  function handleRuleToggle(setter: (value: boolean) => boolean, nextValue: boolean) {
+    if (!setter(nextValue)) {
+      toast.error("Couldn't change that — you're offline right now.", { icon: "📡" });
+    }
   }
 
   return (
@@ -238,21 +288,51 @@ export function BankerConsole() {
       <div className="flex flex-col gap-3">
         <AdjustBalanceCard />
 
+        {trackProperties && (
+          <div className="mt-2 flex flex-col gap-2">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-text-faint">
+              Inventory
+            </h2>
+            <InventorySummary
+              label="Houses"
+              Icon={Home}
+              remaining={TOTAL_HOUSES - built.houses}
+              total={TOTAL_HOUSES}
+            />
+            <InventorySummary
+              label="Hotels"
+              Icon={Building2}
+              remaining={TOTAL_HOTELS - built.hotels}
+              total={TOTAL_HOTELS}
+            />
+          </div>
+        )}
+
         <div className="mt-2 flex flex-col gap-2">
           <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-text-faint">
-            Inventory
+            Game Rules
           </h2>
-          <InventorySummary
-            label="Houses"
-            Icon={Home}
-            remaining={TOTAL_HOUSES - built.houses}
-            total={TOTAL_HOUSES}
+          <RuleRow
+            icon={<Sparkles className="h-4.5 w-4.5" />}
+            label="Free Parking jackpot"
+            description="Taxes and fines pool up and pay out to whoever lands on Free Parking."
+            checked={useFreeParking}
+            onCheckedChange={() => handleRuleToggle(setFreeParkingJackpot, !useFreeParking)}
           />
-          <InventorySummary
-            label="Hotels"
-            Icon={Building2}
-            remaining={TOTAL_HOTELS - built.hotels}
-            total={TOTAL_HOTELS}
+          <RuleRow
+            icon={<Home className="h-4.5 w-4.5" />}
+            label="Track properties"
+            description="Buying requires picking a real property; houses/hotels build up per-property. Off = free-text money transfers only."
+            checked={trackProperties}
+            onCheckedChange={() => handleRuleToggle(setTrackProperties, !trackProperties)}
+          />
+          <RuleRow
+            icon={<Gavel className="h-4.5 w-4.5" />}
+            label="Allow auctions"
+            description="A declined property can be claimed by anyone at whatever it went for at the table."
+            checked={allowAuction}
+            onCheckedChange={() => handleRuleToggle(setAllowAuction, !allowAuction)}
+            disabled={!trackProperties}
           />
         </div>
 

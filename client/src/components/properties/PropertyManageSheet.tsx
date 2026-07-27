@@ -25,6 +25,7 @@ export function PropertyManageSheet({
   const sellBuildingOnProperty = useDashboardStore((s) => s.sellBuildingOnProperty);
   const mortgageProperty = useDashboardStore((s) => s.mortgageProperty);
   const unmortgageProperty = useDashboardStore((s) => s.unmortgageProperty);
+  const allowAuction = useDashboardStore((s) => s.allowAuction);
 
   const [auctionMode, setAuctionMode] = useState(false);
   const [auctionAmount, setAuctionAmount] = useState("");
@@ -168,13 +169,15 @@ export function PropertyManageSheet({
                     <Button className="w-full gap-2" onClick={handleBuy}>
                       Buy for {formatCurrency(def.price, edition)}
                     </Button>
-                    <button
-                      onClick={() => setAuctionMode(true)}
-                      className="flex items-center justify-center gap-1.5 rounded-full border border-dashed border-border py-2 text-sm font-semibold text-text-faint transition-colors hover:text-text"
-                    >
-                      <Gavel className="h-3.5 w-3.5" />
-                      Declined — sell at auction instead
-                    </button>
+                    {allowAuction && (
+                      <button
+                        onClick={() => setAuctionMode(true)}
+                        className="flex items-center justify-center gap-1.5 rounded-full border border-dashed border-border py-2 text-sm font-semibold text-text-faint transition-colors hover:text-text"
+                      >
+                        <Gavel className="h-3.5 w-3.5" />
+                        Declined — sell at auction instead
+                      </button>
+                    )}
                   </div>
                 )
               ) : (

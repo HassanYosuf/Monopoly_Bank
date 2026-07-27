@@ -22,6 +22,7 @@ export function Dashboard() {
   const selfId = useDashboardStore((s) => s.selfId);
   const transactions = useDashboardStore((s) => s.transactions);
   const passGo = useDashboardStore((s) => s.passGo);
+  const trackProperties = useDashboardStore((s) => s.trackProperties);
 
   const edition = EDITIONS[editionId];
   const displayBank = useAnimatedNumber(bankBalance);
@@ -76,13 +77,15 @@ export function Dashboard() {
           >
             <History className="h-4 w-4" />
           </button>
-          <button
-            onClick={() => goTo("properties")}
-            aria-label="View properties"
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-border-soft bg-surface text-text-muted transition-colors hover:bg-surface-2 hover:text-text"
-          >
-            <Building2 className="h-4 w-4" />
-          </button>
+          {trackProperties && (
+            <button
+              onClick={() => goTo("properties")}
+              aria-label="View properties"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-border-soft bg-surface text-text-muted transition-colors hover:bg-surface-2 hover:text-text"
+            >
+              <Building2 className="h-4 w-4" />
+            </button>
+          )}
           {isBanker && (
             <button
               onClick={() => goTo("banker-console")}
