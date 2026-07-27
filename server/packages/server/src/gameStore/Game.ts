@@ -30,6 +30,10 @@ export default class Game {
 
   private gameId: string;
   private deleteInstance: () => void;
+  // Each persistEvent call is otherwise independently fire-and-forget, so
+  // concurrent writes could land in the DB in a different order than they
+  // happened in memory — this chains them so replay order always matches.
+  private persistQueue: Promise<void> = Promise.resolve();
 
   constructor(gameId: string, deleteInstance: () => void, edition: string) {
     this.gameId = gameId;
@@ -209,7 +213,7 @@ export default class Game {
     const outgoingMessage: INewEventMessage = { type: "newEvent", event };
     this.sendMessageToAllInGame(outgoingMessage);
 
-    void persistEvent(this.gameId, event);
+    this.persistQueue = this.persistQueue.then(() => persistEvent(this.gameId, event));
   };
 
   // Send a message to all listening websockets
