@@ -1,6 +1,7 @@
 import { GameEvent, IGameState } from "./types";
 
 export const defaultGameState: IGameState = {
+  edition: "international",
   players: [],
   useFreeParking: true,
   showOppositionBalances: true,
@@ -19,6 +20,7 @@ export const calculateGameState = (events: GameEvent[], currentState: IGameState
             {
               playerId: event.playerId,
               name: event.name,
+              token: event.token,
               banker: false,
               balance: 0,
               connected: false
@@ -118,6 +120,11 @@ export const calculateGameState = (events: GameEvent[], currentState: IGameState
             ]
           };
         }
+      case "transactionDispute":
+        // Disputes are an annotation on a transaction, not a balance change —
+        // clients derive a disputed-set from the raw event log themselves.
+        return state;
+
       case "gameOpenStateChange":
         return {
           ...state,

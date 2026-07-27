@@ -21,12 +21,13 @@ export default class Game {
   private events: GameEvent[] = []; // Events in this game
   private subscribedWebSockets: Record<string, websocket> = {}; // playerId: event websocket
   private userTokenToPlayers: Record<string, PlayerId> = {}; // A mapping of ids only known by a user to match to a player
-  private gameState: IGameState = defaultGameState;
+  private gameState: IGameState;
 
   private deleteInstance: () => void;
 
-  constructor(deleteInstance: () => void) {
+  constructor(deleteInstance: () => void, edition: string) {
     this.deleteInstance = deleteInstance;
+    this.gameState = { ...defaultGameState, edition };
   }
 
   // Check if a game is open
@@ -45,18 +46,20 @@ export default class Game {
   public getPlayerId = (userToken: string) => this.userTokenToPlayers[userToken];
 
   // Add a player to a game and get the new userToken
-  public addPlayer = (name: string) => {
+  public addPlayer = (name: string, token: string) => {
     // Identify id
     const playerId = generateTimeBasedId();
     const userToken = generateRandomId();
 
     // Add the player
     const event: IPlayerJoinEvent = {
+      id: generateRandomId(),
       type: "playerJoin",
       time: getCurrentTime(),
       actionedBy: playerId,
       playerId,
-      name
+      name,
+      token
     };
     this.pushEvent(event);
 
@@ -73,6 +76,7 @@ export default class Game {
     actionedByPlayerId: string
   ) => {
     const event: IPlayerBankerStatusChangeEvent = {
+      id: generateRandomId(),
       type: "playerBankerStatusChange",
       time: getCurrentTime(),
       actionedBy: actionedByPlayerId,
@@ -88,6 +92,7 @@ export default class Game {
     if (this.gameState.players.find((p) => p.playerId) !== undefined) {
       // If the player is still in the game, update their state
       const event: IPlayerConnectionChangeEvent = {
+        id: generateRandomId(),
         type: "playerConnectionChange",
         time: getCurrentTime(),
         actionedBy: playerId,
@@ -123,6 +128,7 @@ export default class Game {
   public addEvent = (event: GameEvent, actionedBy: PlayerId) => {
     this.pushEvent({
       ...event,
+      id: generateRandomId(),
       actionedBy,
       time: getCurrentTime()
     });

@@ -3,21 +3,25 @@ import gameStore from "../../gameStore";
 import { IncomingMessage } from "../dto";
 import { IUserData } from "../types";
 
+// Sent to the client so it can tell "this session will never work" apart
+// from a plain network drop worth retrying — see gameSocket.ts on the client.
+const INVALID_SESSION_CLOSE_CODE = 4001;
+
 const isAuthenticated = (ws: websocket, { gameId, userToken }: IUserData): boolean => {
   // If the user has not sent an IAuthMessage
   if (gameId === null || userToken === null) {
-    ws.close();
+    ws.close(INVALID_SESSION_CLOSE_CODE, "invalid-session");
     return false;
   }
   // If the game does no longer exist
   if (!gameStore.doesGameExist(gameId)) {
-    ws.close();
+    ws.close(INVALID_SESSION_CLOSE_CODE, "invalid-session");
     return false;
   }
   // If user is not in the game
   const game = gameStore.getGame(gameId);
   if (!game.isUserInGame(userToken)) {
-    ws.close();
+    ws.close(INVALID_SESSION_CLOSE_CODE, "invalid-session");
     return false;
   }
   return true;
@@ -40,12 +44,12 @@ export const authMessage: MessageHandler = (ws, userData, message) => {
   if (message.type === "auth") {
     // If the game does no longer exist or the user is not in the game, end the connection
     if (!gameStore.doesGameExist(message.gameId)) {
-      ws.close();
+      ws.close(INVALID_SESSION_CLOSE_CODE, "invalid-session");
       return;
     }
     const game = gameStore.getGame(message.gameId);
     if (!game.isUserInGame(message.userToken)) {
-      ws.close();
+      ws.close(INVALID_SESSION_CLOSE_CODE, "invalid-session");
       return;
     }
 
@@ -78,8 +82,13 @@ export const proposeEvent: MessageHandler = (ws, { gameId, userToken }, message)
         if (event.amount <= 0) {
           return; // All transactions must have an amount greater than 0
         }
-        if ((event.from === "bank" || event.from === "freeParking") && !isPlayerBanker) {
-          return; // Only bankers can send money from the bank or free parking
+        if (
+          (event.from === "bank" || event.from === "freeParking") &&
+          !isPlayerBanker &&
+          !(event.from === "bank" && event.to === playerId)
+        ) {
+          return; // Only bankers can send money from the bank or free parking,
+          // except a player collecting their own Pass Go payout from the bank
         } else if (
           event.from !== "bank" &&
           event.from !== "freeParking" &&
@@ -103,6 +112,12 @@ export const proposeEvent: MessageHandler = (ws, { gameId, userToken }, message)
         if (event.playerId !== playerId) {
           return; // Players can only update their own connection status
         }
+        break;
+      case "playerBankerStatusChange":
+        if (!isPlayerBanker) {
+          return; // Only an existing banker can grant or revoke banker status
+        }
+        break;
     }
 
     game.addEvent(event, playerId);

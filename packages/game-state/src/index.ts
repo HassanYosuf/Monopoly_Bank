@@ -2,6 +2,7 @@ import { calculateGameState, defaultGameState } from "./state";
 import {
   GameEntity,
   GameEvent,
+  IGameEvent,
   IGameOpenStateChangeEvent,
   IGameState,
   IGameStatePlayer,
@@ -11,6 +12,7 @@ import {
   IPlayerJoinEvent,
   IPlayerNameChangeEvent,
   IShowOppositionBalancesChangeEvent,
+  ITransactionDisputeEvent,
   ITransactionEvent,
   IUseFreeParkingChangeEvent,
   PlayerId
@@ -21,6 +23,7 @@ export {
   defaultGameState,
   GameEntity,
   GameEvent,
+  IGameEvent,
   IGameOpenStateChangeEvent,
   IGameState,
   IGameStatePlayer,
@@ -30,6 +33,7 @@ export {
   IPlayerJoinEvent,
   IPlayerNameChangeEvent,
   IShowOppositionBalancesChangeEvent,
+  ITransactionDisputeEvent,
   ITransactionEvent,
   IUseFreeParkingChangeEvent,
   PlayerId

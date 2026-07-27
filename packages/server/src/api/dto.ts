@@ -4,16 +4,20 @@ import { GameEvent } from "@monopoly-money/game-state";
 
 export interface ICreateGameRequest {
   name: string;
+  token: string;
+  edition: string;
 }
 
 export interface IJoinGameRequest {
   name: string;
+  token: string;
 }
 
 export interface IJoinGameResponse {
   gameId: string;
   userToken: string; // An auth token is used to identify a user
   playerId: string; // Tell the player who they are (not required when making calls)
+  edition: string; // Set once at game creation; not derivable from the event log
 }
 
 // Websocket Incoming Message Types (server <= client)

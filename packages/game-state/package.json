@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "main": "build/index.js",
-  "types": "build/index.d.js",
+  "types": "build/index.d.ts",
   "publishConfig": {
     "access": "public"
   },
