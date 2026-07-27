@@ -1,0 +1,12 @@
+services:
+  - name: monopoly-bank-server
+    type: web
+    runtime: docker
+    plan: free
+    region: singapore
+    rootDir: ./server
+    dockerfilePath: ./server/Dockerfile
+    dockerContext: ./server
+    envVars:
+      - key: SERVER_ALLOWED_ORIGINS
+        value: https://monopoly-bank-x67u.vercel.app

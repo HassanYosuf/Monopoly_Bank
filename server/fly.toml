@@ -3,8 +3,8 @@
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = "monopoly-money"
-primary_region = "syd"
+app = "monopoly-bank-hy"
+primary_region = "sin"
 kill_signal = "SIGINT"
 kill_timeout = "5s"
 
@@ -13,10 +13,7 @@ kill_timeout = "5s"
 
 [env]
   PORT = "8080"
-  VITE_API_ROOT = "https://monopoly-money.fly.dev"
-  VITE_API_UNREACHABLE_ERROR_MESSAGE = "Unable to communicate with server.\nSince this is publicly hosted, we may have run out of minutes on the server.\nThis should be running again next month when the time is reset."
-  VITE_GOOGLE_ANALYTICS_TRACKING_ID = "G-3SFPXD2CWJ"
-  SERVER_ALLOWED_ORIGINS = "https://monopoly-money.nitratine.net,https://monopoly-money.fly.dev"
+  SERVER_ALLOWED_ORIGINS = "https://monopoly-bank-x67u.vercel.app"
 
 [[services]]
   protocol = "tcp"
