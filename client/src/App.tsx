@@ -7,6 +7,7 @@ import { JoinCreateGame } from "@/screens/JoinCreateGame";
 import { GameSetup } from "@/screens/GameSetup";
 import { Dashboard } from "@/screens/Dashboard";
 import { Ledger } from "@/screens/Ledger";
+import { Properties } from "@/screens/Properties";
 import { PlayerDetail } from "@/screens/PlayerDetail";
 import { BankerConsole } from "@/screens/BankerConsole";
 import { EndGameSummary } from "@/screens/EndGameSummary";
@@ -20,6 +21,7 @@ const IN_GAME_SCREENS = new Set<Screen>([
   "setup",
   "dashboard",
   "ledger",
+  "properties",
   "player-detail",
   "banker-console",
 ]);
@@ -92,6 +94,8 @@ function App() {
         return <Dashboard />;
       case "ledger":
         return <Ledger />;
+      case "properties":
+        return <Properties />;
       case "player-detail":
         return <PlayerDetail />;
       case "banker-console":

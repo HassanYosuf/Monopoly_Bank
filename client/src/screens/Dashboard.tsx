@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { History, Landmark, Plus, ShieldAlert, Sparkles } from "lucide-react";
+import { Building2, History, Landmark, Plus, ShieldAlert, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useGameStore } from "@/store/useGameStore";
 import { useDashboardStore } from "@/store/useDashboardStore";
@@ -75,6 +75,13 @@ export function Dashboard() {
             className="flex h-9 w-9 items-center justify-center rounded-full border border-border-soft bg-surface text-text-muted transition-colors hover:bg-surface-2 hover:text-text"
           >
             <History className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => goTo("properties")}
+            aria-label="View properties"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-border-soft bg-surface text-text-muted transition-colors hover:bg-surface-2 hover:text-text"
+          >
+            <Building2 className="h-4 w-4" />
           </button>
           {isBanker && (
             <button

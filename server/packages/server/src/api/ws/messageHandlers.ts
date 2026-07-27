@@ -7,6 +7,12 @@ import { IUserData } from "../types";
 // from a plain network drop worth retrying — see gameSocket.ts on the client.
 const INVALID_SESSION_CLOSE_CODE = 4001;
 
+// Physical piece counts in a standard Monopoly set, shared across the whole
+// board — duplicated from client/src/lib/properties.ts since there's no
+// shared package for edition/property data, only game-state's event shapes.
+const TOTAL_HOUSES = 32;
+const TOTAL_HOTELS = 12;
+
 const isAuthenticated = (ws: websocket, { gameId, userToken }: IUserData): boolean => {
   // If the user has not sent an IAuthMessage
   if (gameId === null || userToken === null) {
@@ -118,6 +124,36 @@ export const proposeEvent: MessageHandler = (ws, { gameId, userToken }, message)
           return; // Only an existing banker can grant or revoke banker status
         }
         break;
+      case "propertyStateChange": {
+        if (event.houses < 0 || event.houses > 4) {
+          return; // Houses must be between 0 and 4 — a hotel replaces them
+        }
+        if (event.hasHotel && event.houses !== 0) {
+          return; // A hotel replaces the 4 houses; they can't coexist
+        }
+
+        const gameState = game.getGameState();
+        const currentOwner = gameState.properties[event.propertyId]?.ownerId ?? null;
+        const isSelf = event.ownerId === playerId;
+        const isCurrentOwner = currentOwner === playerId;
+        if (!isPlayerBanker && !isSelf && !isCurrentOwner) {
+          return; // Only a banker can change a property you don't own and aren't claiming for yourself
+        }
+
+        // Enforce the physical piece limit shared across the whole board.
+        const others = Object.values(gameState.properties).filter(
+          (p) => p.propertyId !== event.propertyId
+        );
+        const housesElsewhere = others.reduce((sum, p) => sum + p.houses, 0);
+        const hotelsElsewhere = others.filter((p) => p.hasHotel).length;
+        if (housesElsewhere + event.houses > TOTAL_HOUSES) {
+          return; // Not enough houses left in the bank
+        }
+        if (hotelsElsewhere + (event.hasHotel ? 1 : 0) > TOTAL_HOTELS) {
+          return; // Not enough hotels left in the bank
+        }
+        break;
+      }
     }
 
     game.addEvent(event, playerId);

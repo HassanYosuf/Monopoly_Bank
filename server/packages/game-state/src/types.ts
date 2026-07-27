@@ -12,9 +12,19 @@ export interface IGameStatePlayer {
   connected: boolean;
 }
 
+// A property with no entry in this map is unowned, with 0 houses and no
+// hotel — entries only exist once a property's state first changes.
+export interface IGameStateProperty {
+  propertyId: string;
+  ownerId: PlayerId | null;
+  houses: number; // 0-4; a hotel replaces these, so houses is always 0 once hasHotel is true
+  hasHotel: boolean;
+}
+
 export interface IGameState {
   edition: string;
   players: IGameStatePlayer[];
+  properties: Record<string, IGameStateProperty>;
   useFreeParking: boolean;
   showOppositionBalances: boolean;
   freeParkingBalance: number;
@@ -33,7 +43,8 @@ export type GameEvent =
   | IGameOpenStateChangeEvent
   | IUseFreeParkingChangeEvent
   | IShowOppositionBalancesChangeEvent
-  | IPlayerConnectionChangeEvent;
+  | IPlayerConnectionChangeEvent
+  | IPropertyStateChangeEvent;
 
 export interface IGameEvent {
   id: string;
@@ -98,4 +109,15 @@ export interface IPlayerConnectionChangeEvent extends IGameEvent {
   type: "playerConnectionChange";
   playerId: PlayerId;
   connected: boolean;
+}
+
+// A full replace of one property's state rather than granular
+// buy/build/sell events — simplest to reason about and to authorize (see
+// messageHandlers.ts), mirroring IPlayerBankerStatusChangeEvent's approach.
+export interface IPropertyStateChangeEvent extends IGameEvent {
+  type: "propertyStateChange";
+  propertyId: string;
+  ownerId: PlayerId | null;
+  houses: number;
+  hasHotel: boolean;
 }

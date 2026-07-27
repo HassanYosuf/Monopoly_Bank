@@ -2,11 +2,10 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
+  Building2,
   Home,
   Lock,
   LogOut,
-  Minus,
-  Plus,
   ShieldAlert,
   Unlock,
 } from "lucide-react";
@@ -14,6 +13,7 @@ import { toast } from "sonner";
 import { useGameStore } from "@/store/useGameStore";
 import { useDashboardStore, BANK_ID } from "@/store/useDashboardStore";
 import { EDITIONS, formatCurrency } from "@/lib/locale";
+import { TOTAL_HOTELS, TOTAL_HOUSES } from "@/lib/properties";
 import { TokenBadge } from "@/components/icons/token-badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -158,49 +158,30 @@ function AdjustBalanceCard() {
   );
 }
 
-function InventoryCounter({
+// Read-only — houses/hotels in play are now derived from what's actually
+// built on the Properties screen, not a manually-adjustable tally.
+function InventorySummary({
   label,
-  count,
+  Icon,
+  remaining,
   total,
-  onChange,
 }: {
   label: string;
-  count: number;
+  Icon: typeof Home;
+  remaining: number;
   total: number;
-  onChange: (delta: number) => void;
 }) {
   return (
     <div className="flex items-center justify-between rounded-2xl border border-border-soft bg-surface p-4">
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-3 text-gold">
-          <Home className="h-4.5 w-4.5" />
+          <Icon className="h-4.5 w-4.5" />
         </div>
-        <div>
-          <div className="text-sm font-bold text-text">{label}</div>
-          <div className="font-mono text-xs text-text-faint">{count} of {total} left</div>
-        </div>
+        <div className="text-sm font-bold text-text">{label}</div>
       </div>
-      <div className="flex items-center gap-1">
-        <button
-          onClick={() => onChange(-1)}
-          disabled={count <= 0}
-          aria-label={`Remove one ${label.toLowerCase()}`}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-3 text-text transition-colors hover:bg-surface-2 disabled:opacity-30"
-        >
-          <Minus className="h-4 w-4" />
-        </button>
-        <span className="w-8 text-center font-mono text-sm font-bold tabular-nums text-text">
-          {count}
-        </span>
-        <button
-          onClick={() => onChange(1)}
-          disabled={count >= total}
-          aria-label={`Add one ${label.toLowerCase()}`}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-3 text-text transition-colors hover:bg-surface-2 disabled:opacity-30"
-        >
-          <Plus className="h-4 w-4" />
-        </button>
-      </div>
+      <span className="font-mono text-sm font-bold tabular-nums text-text-muted">
+        {remaining} of {total} left
+      </span>
     </div>
   );
 }
@@ -209,10 +190,13 @@ export function BankerConsole() {
   const goTo = useGameStore((s) => s.goTo);
   const isLocked = useDashboardStore((s) => s.isLocked);
   const toggleLocked = useDashboardStore((s) => s.toggleLocked);
-  const houses = useDashboardStore((s) => s.houses);
-  const hotels = useDashboardStore((s) => s.hotels);
-  const adjustInventory = useDashboardStore((s) => s.adjustInventory);
+  const properties = useDashboardStore((s) => s.properties);
   const endGame = useDashboardStore((s) => s.endGame);
+
+  const built = Object.values(properties).reduce(
+    (acc, p) => ({ houses: acc.houses + p.houses, hotels: acc.hotels + (p.hasHotel ? 1 : 0) }),
+    { houses: 0, hotels: 0 },
+  );
   const [endOpen, setEndOpen] = useState(false);
 
   function handleEndGame() {
@@ -258,8 +242,18 @@ export function BankerConsole() {
           <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-text-faint">
             Inventory
           </h2>
-          <InventoryCounter label="Houses" count={houses} total={32} onChange={(d) => adjustInventory("houses", d)} />
-          <InventoryCounter label="Hotels" count={hotels} total={12} onChange={(d) => adjustInventory("hotels", d)} />
+          <InventorySummary
+            label="Houses"
+            Icon={Home}
+            remaining={TOTAL_HOUSES - built.houses}
+            total={TOTAL_HOUSES}
+          />
+          <InventorySummary
+            label="Hotels"
+            Icon={Building2}
+            remaining={TOTAL_HOTELS - built.hotels}
+            total={TOTAL_HOTELS}
+          />
         </div>
 
         <div className="mt-2 flex items-start justify-between gap-4 rounded-2xl border border-border-soft bg-surface p-4">

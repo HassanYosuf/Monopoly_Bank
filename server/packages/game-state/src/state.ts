@@ -3,6 +3,7 @@ import { GameEvent, IGameState } from "./types";
 export const defaultGameState: IGameState = {
   edition: "international",
   players: [],
+  properties: {},
   useFreeParking: true,
   showOppositionBalances: true,
   freeParkingBalance: 0,
@@ -31,7 +32,17 @@ export const calculateGameState = (events: GameEvent[], currentState: IGameState
       case "playerDelete":
         return {
           ...state,
-          players: state.players.filter((p) => p.playerId !== event.playerId)
+          players: state.players.filter((p) => p.playerId !== event.playerId),
+          // Their properties return to the bank rather than staying "owned"
+          // by someone no longer in the game.
+          properties: Object.keys(state.properties).reduce((acc, id) => {
+            const property = state.properties[id];
+            acc[id] =
+              property.ownerId === event.playerId
+                ? { ...property, ownerId: null, houses: 0, hasHotel: false }
+                : property;
+            return acc;
+          }, {} as IGameState["properties"])
         };
 
       case "playerNameChange":
@@ -153,6 +164,20 @@ export const calculateGameState = (events: GameEvent[], currentState: IGameState
               connected: event.connected
             }
           ]
+        };
+
+      case "propertyStateChange":
+        return {
+          ...state,
+          properties: {
+            ...state.properties,
+            [event.propertyId]: {
+              propertyId: event.propertyId,
+              ownerId: event.ownerId,
+              houses: event.houses,
+              hasHotel: event.hasHotel
+            }
+          }
         };
     }
   }, currentState);

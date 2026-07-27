@@ -6,6 +6,7 @@ import type { TokenId } from "@/components/icons/tokens";
 import type { TransactionTypeId } from "@/lib/transactionTypes";
 import { GameSocket } from "@/lib/gameSocket";
 import { saveSession } from "@/lib/session";
+import { propertyById, TOTAL_HOTELS, TOTAL_HOUSES } from "@/lib/properties";
 
 export const BANK_ID = "bank";
 
@@ -17,6 +18,13 @@ export interface RuntimePlayer {
   balance: number;
   isOnline: boolean;
   isBankrupt: boolean;
+}
+
+export interface RuntimeProperty {
+  propertyId: string;
+  ownerId: string | null;
+  houses: number;
+  hasHotel: boolean;
 }
 
 export interface Transaction {
@@ -55,8 +63,7 @@ interface DashboardState {
   bankBalance: number;
   transactions: Transaction[];
   isLocked: boolean;
-  houses: number;
-  hotels: number;
+  properties: Record<string, RuntimeProperty>;
   startedAt: number | null;
   status: "active" | "ended";
   lastActivity: Record<string, number>;
@@ -73,7 +80,9 @@ interface DashboardState {
   sendTransaction: (input: SendTransactionInput) => boolean;
   passGo: () => boolean;
   toggleLocked: () => boolean;
-  adjustInventory: (kind: "houses" | "hotels", delta: number) => void;
+  buyProperty: (propertyId: string) => boolean;
+  buildOnProperty: (propertyId: string) => boolean;
+  sellBuildingOnProperty: (propertyId: string) => boolean;
   endGame: () => boolean;
   disputeTransaction: (id: string) => boolean;
   clearPulse: (playerId: string) => void;
@@ -130,7 +139,7 @@ function deriveFromEvents(rawEvents: GameEvent[]) {
     isBankrupt: p.balance < 0,
   }));
 
-  return { gameState, transactions, players };
+  return { gameState, transactions, players, properties: gameState.properties };
 }
 
 function eventBase(actionedBy: string) {
@@ -178,7 +187,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
 
   function applyDerivedUpdate(isIncremental: boolean) {
     const prevPlayers = get().players;
-    const { transactions, players, gameState } = deriveFromEvents(rawEvents);
+    const { transactions, players, gameState, properties } = deriveFromEvents(rawEvents);
 
     const pulses = { ...get().pulses };
     const lastActivity = { ...get().lastActivity };
@@ -214,6 +223,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
       lastActivity,
       isLocked: !gameState.open,
       bankBalance,
+      properties,
       hasSynced: true,
     });
 
@@ -228,8 +238,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
     bankBalance: 0,
     transactions: [],
     isLocked: false,
-    houses: 32,
-    hotels: 12,
+    properties: {},
     startedAt: null,
     status: "active",
     lastActivity: {},
@@ -255,8 +264,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         transactions: [],
         pulses: {},
         lastActivity: {},
-        houses: 32,
-        hotels: 12,
+        properties: {},
         bankBalance: 0,
         connectionStatus: "connecting",
         hasSynced: false,
@@ -337,11 +345,108 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
       return true;
     },
 
-    // Houses/hotels have no equivalent in the forked server's model and
-    // are purely cosmetic counters — kept client-local rather than
-    // extending the shared event schema for a non-money-moving display.
-    adjustInventory: (kind, delta) =>
-      set((s) => ({ [kind]: Math.max(0, s[kind] + delta) }) as Pick<DashboardState, typeof kind>),
+    buyProperty: (propertyId) => {
+      const state = get();
+      if (!state.selfId || state.connectionStatus !== "connected") return false;
+      const def = propertyById(state.edition, propertyId);
+      if (!def) return false;
+      if (state.properties[propertyId]?.ownerId) return false; // already owned
+
+      state.sendTransaction({
+        type: "buy-property",
+        fromId: state.selfId,
+        toId: BANK_ID,
+        amount: def.price,
+        memo: def.name,
+      });
+      const event: GameEvent = {
+        ...eventBase(state.selfId),
+        type: "propertyStateChange",
+        propertyId,
+        ownerId: state.selfId,
+        houses: 0,
+        hasHotel: false,
+      };
+      socket?.proposeEvent(event);
+      return true;
+    },
+
+    buildOnProperty: (propertyId) => {
+      const state = get();
+      if (!state.selfId || state.connectionStatus !== "connected") return false;
+      const def = propertyById(state.edition, propertyId);
+      if (!def || !def.buildable) return false;
+      const current = state.properties[propertyId];
+      if (!current || current.ownerId !== state.selfId || current.hasHotel) return false;
+
+      const nextHouses = current.houses < 4 ? current.houses + 1 : 0;
+      const nextHasHotel = current.houses === 4;
+
+      // The bank's houses/hotels are one shared pool across every property —
+      // check availability against everyone else's buildings, not just this
+      // one (the server enforces this for real; this just avoids a doomed
+      // request and gives immediate UI feedback).
+      const totals = Object.values(state.properties).reduce(
+        (acc, p) => ({
+          houses: acc.houses + p.houses,
+          hotels: acc.hotels + (p.hasHotel ? 1 : 0),
+        }),
+        { houses: 0, hotels: 0 },
+      );
+      const housesElsewhere = totals.houses - current.houses;
+      const hotelsElsewhere = totals.hotels - (current.hasHotel ? 1 : 0);
+      if (housesElsewhere + nextHouses > TOTAL_HOUSES) return false;
+      if (hotelsElsewhere + (nextHasHotel ? 1 : 0) > TOTAL_HOTELS) return false;
+
+      state.sendTransaction({
+        type: "buy-property",
+        fromId: state.selfId,
+        toId: BANK_ID,
+        amount: def.houseCost,
+        memo: nextHasHotel ? `Hotel — ${def.name}` : `House — ${def.name}`,
+      });
+      const event: GameEvent = {
+        ...eventBase(state.selfId),
+        type: "propertyStateChange",
+        propertyId,
+        ownerId: current.ownerId,
+        houses: nextHouses,
+        hasHotel: nextHasHotel,
+      };
+      socket?.proposeEvent(event);
+      return true;
+    },
+
+    sellBuildingOnProperty: (propertyId) => {
+      const state = get();
+      if (!state.selfId || state.connectionStatus !== "connected") return false;
+      const def = propertyById(state.edition, propertyId);
+      if (!def) return false;
+      const current = state.properties[propertyId];
+      if (!current || current.ownerId !== state.selfId) return false;
+      if (current.houses === 0 && !current.hasHotel) return false; // nothing to sell
+
+      const nextHouses = current.hasHotel ? 4 : current.houses - 1;
+      const refund = Math.floor(def.houseCost / 2); // standard rule: half the build cost back
+
+      state.sendTransaction({
+        type: "mortgage",
+        fromId: BANK_ID,
+        toId: state.selfId,
+        amount: refund,
+        memo: current.hasHotel ? `Sold hotel — ${def.name}` : `Sold house — ${def.name}`,
+      });
+      const event: GameEvent = {
+        ...eventBase(state.selfId),
+        type: "propertyStateChange",
+        propertyId,
+        ownerId: current.ownerId,
+        houses: nextHouses,
+        hasHotel: false,
+      };
+      socket?.proposeEvent(event);
+      return true;
+    },
 
     endGame: () => {
       if (get().connectionStatus !== "connected") return false;

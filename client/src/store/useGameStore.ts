@@ -32,6 +32,7 @@ export type Screen =
   | "setup"
   | "dashboard"
   | "ledger"
+  | "properties"
   | "player-detail"
   | "banker-console"
   | "end-game";
