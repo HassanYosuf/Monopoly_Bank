@@ -1,0 +1,15 @@
+{
+  "editor.formatOnSave": true,
+  "editor.rulers": [100],
+  "editor.tabSize": 2,
+  "editor.codeActionsOnSave": {
+    "source.sortImports": "explicit"
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "/packages/client/build": true,
+    "/packages/game-state/build": true,
+    "/packages/server/build": true,
+    "**/package-lock.json": true
+  }
+}
