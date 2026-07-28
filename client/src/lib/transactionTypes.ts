@@ -14,6 +14,7 @@ export type TransactionTypeId =
   | "buy-property"
   | "tax"
   | "bank-payout"
+  | "pass-go"
   | "trade"
   | "mortgage"
   | "custom";
@@ -77,6 +78,17 @@ export const TRANSACTION_TYPES: TransactionTypeDef[] = [
     counterpartyEditable: false,
     directionEditable: false,
     memoPlaceholder: "Payout",
+  },
+  {
+    id: "pass-go",
+    label: "Pass Go",
+    description: "From the bank",
+    Icon: Sparkles,
+    counterparty: "bank",
+    direction: "receive",
+    counterpartyEditable: false,
+    directionEditable: false,
+    memoPlaceholder: "Passed Go",
   },
   {
     id: "trade",

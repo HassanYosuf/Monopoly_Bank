@@ -72,9 +72,16 @@ export function TransactionSheet({
   const isBanker = selfPlayer?.isBanker ?? false;
 
   // Only the banker's device can push money out of the bank to anyone at
-  // the table — everyone else can only collect a bank payout for themselves.
+  // the table — everyone else can't self-serve a Bank Payout at all (Pass
+  // Go and mortgage/build payouts have their own dedicated, rule-validated
+  // flows and don't go through this generic type).
   const bankPaysAnyPlayer = type?.id === "bank-payout" && isBanker;
   const payoutRoster = players.filter((p) => !p.isBankrupt);
+  // "Pass Go" has its own dedicated button on the dashboard, and a non-banker
+  // can't use "Bank Payout" here since it now always requires banker approval.
+  const selectableTypes = TRANSACTION_TYPES.filter(
+    (t) => t.id !== "pass-go" && (t.id !== "bank-payout" || isBanker),
+  );
 
   function reset() {
     setStep("type");
@@ -237,7 +244,7 @@ export function TransactionSheet({
                     </button>
                   </div>
                   <div className="grid grid-cols-2 gap-2.5">
-                    {TRANSACTION_TYPES.map((t) => (
+                    {selectableTypes.map((t) => (
                       <button
                         key={t.id}
                         onClick={() => selectType(t.id)}

@@ -91,10 +91,16 @@ export const proposeEvent: MessageHandler = (ws, { gameId, userToken }, message)
         if (
           (event.from === "bank" || event.from === "freeParking") &&
           !isPlayerBanker &&
-          !(event.from === "bank" && event.to === playerId)
+          !(
+            event.from === "bank" &&
+            event.to === playerId &&
+            (event.category === "pass-go" || event.category === "mortgage")
+          )
         ) {
-          return; // Only bankers can send money from the bank or free parking,
-          // except a player collecting their own Pass Go payout from the bank
+          return; // Only bankers can send money from the bank or free parking.
+          // The only self-serve exceptions are a player collecting their own
+          // Pass Go payout, and rule-validated mortgage/build payouts —
+          // everything else (e.g. an arbitrary Bank Payout) needs a banker.
         } else if (
           event.from !== "bank" &&
           event.from !== "freeParking" &&

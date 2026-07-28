@@ -19,6 +19,8 @@ export function describeTransaction(tx: Transaction, players: RuntimePlayer[]): 
       return `${from} bought ${tx.memo || "a property"}`;
     case "bank-payout":
       return tx.memo === "Passed Go" ? `${to} passed Go` : `${to} collected a bank payout`;
+    case "pass-go":
+      return `${to} passed Go`;
     case "trade":
       return `${from} traded with ${to}${tx.memo ? ` — ${tx.memo}` : ""}`;
     case "mortgage":

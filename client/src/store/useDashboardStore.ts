@@ -355,7 +355,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
       const state = get();
       if (!state.selfId) return false;
       return state.sendTransaction({
-        type: "bank-payout",
+        type: "pass-go",
         fromId: BANK_ID,
         toId: state.selfId,
         amount: EDITIONS[state.edition].passGoAmount,
