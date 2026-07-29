@@ -74,10 +74,6 @@ interface DashboardState {
   trackProperties: boolean;
   allowAuction: boolean;
   trackHousePrices: boolean;
-  // Gates the automatic starting-cash payout — false while still in setup,
-  // so per-player overrides can be set before anyone actually gets paid.
-  started: boolean;
-  startingCashOverrides: Record<string, number>;
   useFreeParking: boolean;
   startedAt: number | null;
   status: "active" | "ended";
@@ -114,10 +110,6 @@ interface DashboardState {
   setTrackProperties: (value: boolean) => boolean;
   setAllowAuction: (value: boolean) => boolean;
   setTrackHousePrices: (value: boolean) => boolean;
-  // Explicit "start the game" trigger, sent once by the banker — unblocks
-  // the automatic starting-cash payout (see `started` above).
-  startGame: () => boolean;
-  setPlayerStartingCash: (playerId: string, amount: number) => boolean;
   setFreeParkingJackpot: (value: boolean) => boolean;
   endGame: () => boolean;
   disputeTransaction: (id: string) => boolean;
@@ -183,8 +175,6 @@ function deriveFromEvents(rawEvents: GameEvent[]) {
     trackProperties: gameState.trackProperties,
     allowAuction: gameState.allowAuction,
     trackHousePrices: gameState.trackHousePrices,
-    started: gameState.started,
-    startingCashOverrides: gameState.startingCashOverrides,
     useFreeParking: gameState.useFreeParking,
   };
 }
@@ -202,16 +192,14 @@ const paidOrPendingStartingCash = new Set<string>();
 export const useDashboardStore = create<DashboardState>((set, get) => {
   // Only the banker's device may move money out of the bank (the server
   // enforces this too), so only it ever runs this — paying every player
-  // their starting cash once the game has actually started, exactly once,
-  // guarded against the async round-trip firing it twice. Gated on
-  // `started` (rather than "first seen") so the banker has the whole setup
-  // screen to set per-player starting-cash overrides before anyone's paid.
+  // their starting cash the moment they're seen for the first time,
+  // exactly once, guarded against the async round-trip firing it twice.
   function maybePayStartingCash() {
     const state = get();
     const selfPlayer = state.players.find((p) => p.id === state.selfId);
-    if (!selfPlayer?.isBanker || !state.selfId || !state.started) return;
+    if (!selfPlayer?.isBanker || !state.selfId) return;
 
-    const defaultStartingCash = EDITIONS[state.edition].startingCash;
+    const startingCash = EDITIONS[state.edition].startingCash;
 
     state.players.forEach((p) => {
       if (paidOrPendingStartingCash.has(p.id)) return;
@@ -226,7 +214,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         type: "transaction",
         from: BANK_ID,
         to: p.id,
-        amount: state.startingCashOverrides[p.id] ?? defaultStartingCash,
+        amount: startingCash,
         category: "bank-payout",
         memo: STARTING_CASH_MEMO,
       };
@@ -244,8 +232,6 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
       trackProperties,
       allowAuction,
       trackHousePrices,
-      started,
-      startingCashOverrides,
       useFreeParking,
     } = deriveFromEvents(rawEvents);
 
@@ -287,8 +273,6 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
       trackProperties,
       allowAuction,
       trackHousePrices,
-      started,
-      startingCashOverrides,
       useFreeParking,
       hasSynced: true,
     });
@@ -308,8 +292,6 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
     trackProperties: false,
     allowAuction: true,
     trackHousePrices: true,
-    started: false,
-    startingCashOverrides: {},
     useFreeParking: true,
     startedAt: null,
     status: "active",
@@ -340,8 +322,6 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         trackProperties: false,
         allowAuction: true,
         trackHousePrices: true,
-        started: false,
-        startingCashOverrides: {},
         useFreeParking: true,
         bankBalance: 0,
         connectionStatus: "connecting",
@@ -701,30 +681,6 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         ...eventBase(state.selfId),
         type: "trackHousePricesChange",
         trackHousePrices: value,
-      };
-      socket?.proposeEvent(event);
-      return true;
-    },
-
-    startGame: () => {
-      const state = get();
-      if (!state.selfId || state.connectionStatus !== "connected") return false;
-      const event: GameEvent = {
-        ...eventBase(state.selfId),
-        type: "gameStarted",
-      };
-      socket?.proposeEvent(event);
-      return true;
-    },
-
-    setPlayerStartingCash: (playerId, amount) => {
-      const state = get();
-      if (!state.selfId || state.connectionStatus !== "connected" || amount < 0) return false;
-      const event: GameEvent = {
-        ...eventBase(state.selfId),
-        type: "playerStartingCashChange",
-        playerId,
-        amount,
       };
       socket?.proposeEvent(event);
       return true;

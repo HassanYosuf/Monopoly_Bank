@@ -176,18 +176,8 @@ export const proposeEvent: MessageHandler = (ws, { gameId, userToken }, message)
       case "trackPropertiesChange":
       case "allowAuctionChange":
       case "trackHousePricesChange":
-      case "gameStarted":
         if (!isPlayerBanker) {
-          return; // Only the banker can change house rules or start the game
-        }
-        break;
-      case "playerStartingCashChange":
-        if (!isPlayerBanker) {
-          return; // Only the banker sets starting cash — it affects every
-          // player's fairness, not just the one being edited
-        }
-        if (event.amount < 0) {
-          return;
+          return; // Only the banker can change house rules
         }
         break;
     }

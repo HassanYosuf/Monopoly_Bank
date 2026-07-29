@@ -54,13 +54,6 @@ export interface IGameState {
   // Irrelevant when trackProperties is on — catalog properties already
   // carry a fixed house cost.
   trackHousePrices: boolean;
-  // Flips true once the banker taps "Start Game" — gates the automatic
-  // starting-cash payout so it waits for any per-player overrides to be
-  // set during setup instead of firing the instant a player joins the lobby.
-  started: boolean;
-  // Per-player starting cash, set by the banker during setup. A player with
-  // no entry here gets the edition's default when they're paid out.
-  startingCashOverrides: Record<PlayerId, number>;
 }
 
 // Game events
@@ -79,9 +72,7 @@ export type GameEvent =
   | IPropertyStateChangeEvent
   | ITrackPropertiesChangeEvent
   | IAllowAuctionChangeEvent
-  | ITrackHousePricesChangeEvent
-  | IGameStartedEvent
-  | IPlayerStartingCashChangeEvent;
+  | ITrackHousePricesChangeEvent;
 
 export interface IGameEvent {
   id: string;
@@ -177,14 +168,4 @@ export interface IAllowAuctionChangeEvent extends IGameEvent {
 export interface ITrackHousePricesChangeEvent extends IGameEvent {
   type: "trackHousePricesChange";
   trackHousePrices: boolean;
-}
-
-export interface IGameStartedEvent extends IGameEvent {
-  type: "gameStarted";
-}
-
-export interface IPlayerStartingCashChangeEvent extends IGameEvent {
-  type: "playerStartingCashChange";
-  playerId: PlayerId;
-  amount: number;
 }

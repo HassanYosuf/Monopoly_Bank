@@ -10,9 +10,7 @@ export const defaultGameState: IGameState = {
   open: true,
   trackProperties: false,
   allowAuction: true,
-  trackHousePrices: true,
-  started: false,
-  startingCashOverrides: {}
+  trackHousePrices: true
 };
 
 export const calculateGameState = (events: GameEvent[], currentState: IGameState): IGameState => {
@@ -206,21 +204,6 @@ export const calculateGameState = (events: GameEvent[], currentState: IGameState
         return {
           ...state,
           trackHousePrices: event.trackHousePrices
-        };
-
-      case "gameStarted":
-        return {
-          ...state,
-          started: true
-        };
-
-      case "playerStartingCashChange":
-        return {
-          ...state,
-          startingCashOverrides: {
-            ...state.startingCashOverrides,
-            [event.playerId]: event.amount
-          }
         };
     }
   }, currentState);
