@@ -5,6 +5,7 @@ import {
   Building2,
   Gavel,
   Home,
+  Landmark,
   Lock,
   LogOut,
   ShieldAlert,
@@ -235,6 +236,8 @@ export function BankerConsole() {
   const setTrackProperties = useDashboardStore((s) => s.setTrackProperties);
   const allowAuction = useDashboardStore((s) => s.allowAuction);
   const setAllowAuction = useDashboardStore((s) => s.setAllowAuction);
+  const trackHousePrices = useDashboardStore((s) => s.trackHousePrices);
+  const setTrackHousePrices = useDashboardStore((s) => s.setTrackHousePrices);
   const endGame = useDashboardStore((s) => s.endGame);
 
   const built = Object.values(properties).reduce(
@@ -333,6 +336,14 @@ export function BankerConsole() {
             checked={allowAuction}
             onCheckedChange={() => handleRuleToggle(setAllowAuction, !allowAuction)}
             disabled={!trackProperties}
+          />
+          <RuleRow
+            icon={<Landmark className="h-4.5 w-4.5" />}
+            label="Ask for house price"
+            description="With Track properties off, also ask for a per-house build price when buying — so houses/hotels can still be tracked on that property."
+            checked={trackHousePrices}
+            onCheckedChange={() => handleRuleToggle(setTrackHousePrices, !trackHousePrices)}
+            disabled={trackProperties}
           />
         </div>
 

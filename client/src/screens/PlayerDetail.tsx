@@ -115,15 +115,14 @@ export function PlayerDetail() {
             {ownedProperties.map((prop) => {
               // Properties bought with "Track Properties" off aren't in the
               // fixed catalog (they're named freehand), so there's no
-              // color-group def or build/mortgage mechanics for them —
-              // just a plain, non-interactive card.
+              // color-group def or house-building for them — but they're
+              // still clickable to mortgage/unmortgage.
               const def = propertyById(editionId, prop.propertyId);
               const swatch = def ? COLOR_GROUP_SWATCH[def.group] : "#9ca3af";
-              const Card = def ? "button" : "div";
               return (
-                <Card
+                <button
                   key={prop.propertyId}
-                  onClick={def ? () => setManagingPropertyId(prop.propertyId) : undefined}
+                  onClick={() => setManagingPropertyId(prop.propertyId)}
                   className="flex shrink-0 flex-col items-start gap-2 text-left"
                 >
                   <div
@@ -153,7 +152,7 @@ export function PlayerDetail() {
                           ? `${prop.houses} house${prop.houses > 1 ? "s" : ""}`
                           : "No buildings yet"}
                   </div>
-                </Card>
+                </button>
               );
             })}
           </div>

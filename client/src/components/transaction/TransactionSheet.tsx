@@ -44,6 +44,7 @@ export function TransactionSheet({
   const buyCustomProperty = useDashboardStore((s) => s.buyCustomProperty);
   const ownedProperties = useDashboardStore((s) => s.properties);
   const trackProperties = useDashboardStore((s) => s.trackProperties);
+  const trackHousePrices = useDashboardStore((s) => s.trackHousePrices);
   const isOnline = useDashboardStore((s) => s.connectionStatus === "connected");
   const edition = EDITIONS[editionId];
 
@@ -56,12 +57,17 @@ export function TransactionSheet({
   const [memo, setMemo] = useState("");
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const [flying, setFlying] = useState<FlyState | null>(null);
+  // Only asked for a freehand (untracked) purchase — a catalog pick already
+  // has a fixed house cost, so there's nothing to ask there.
+  const [customBuildable, setCustomBuildable] = useState(true);
+  const [customHouseCost, setCustomHouseCost] = useState("");
 
   const isBuyProperty = typeId === "buy-property";
   // The catalog picker only makes sense when properties are actually being
   // tracked — with the house rule off there's no ownership record to pick
   // into, so it's just a plain named bank payment instead.
   const showPropertyPicker = isBuyProperty && trackProperties;
+  const askHousePrice = isBuyProperty && !showPropertyPicker && trackHousePrices;
   const unownedProperties = PROPERTIES[editionId].filter((p) => !ownedProperties[p.id]?.ownerId);
 
   const amountRef = useRef<HTMLDivElement>(null);
@@ -95,6 +101,8 @@ export function TransactionSheet({
     setMemo("");
     setSelectedPropertyId(null);
     setFlying(null);
+    setCustomBuildable(true);
+    setCustomHouseCost("");
   }
 
   function handleOpenChange(next: boolean) {
@@ -112,6 +120,8 @@ export function TransactionSheet({
     setAmount(0);
     setMemo("");
     setSelectedPropertyId(null);
+    setCustomBuildable(true);
+    setCustomHouseCost("");
     setStep("details");
   }
 
@@ -148,7 +158,9 @@ export function TransactionSheet({
     amount > 0 &&
     !receivingFromBankAsNonBanker &&
     (isBuyProperty
-      ? !!memo.trim() && (!showPropertyPicker || !!selectedPropertyId)
+      ? !!memo.trim() &&
+        (!showPropertyPicker || !!selectedPropertyId) &&
+        (!askHousePrice || !customBuildable || !!Number(customHouseCost))
       : true) &&
     (bankPaysAnyPlayer
       ? !!recipientId
@@ -192,7 +204,12 @@ export function TransactionSheet({
     const sent = showPropertyPicker
       ? buyProperty(selectedPropertyId!, memo)
       : isBuyProperty
-        ? buyCustomProperty(memo, amount)
+        ? buyCustomProperty(
+            memo,
+            amount,
+            askHousePrice && customBuildable,
+            Number(customHouseCost) || 0,
+          )
         : sendTransaction({ type: type.id, fromId: legs.fromId, toId: legs.toId, amount, memo });
 
     if (!sent) {
@@ -498,6 +515,62 @@ export function TransactionSheet({
                         />
                         {!memo.trim() && (
                           <p className="mt-1.5 text-xs text-text-faint">Required</p>
+                        )}
+
+                        {askHousePrice && (
+                          <div className="mt-3">
+                            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-text-faint">
+                              Type
+                            </div>
+                            <div className="mb-3 flex gap-2 rounded-full bg-surface-2 p-1">
+                              {(
+                                [
+                                  { value: true, label: "City" },
+                                  { value: false, label: "Railroad / Utility" },
+                                ] as const
+                              ).map((opt) => (
+                                <button
+                                  key={String(opt.value)}
+                                  type="button"
+                                  onClick={() => setCustomBuildable(opt.value)}
+                                  className={cn(
+                                    "flex-1 rounded-full py-2 text-sm font-bold transition-colors",
+                                    customBuildable === opt.value
+                                      ? "bg-green text-[#06170F]"
+                                      : "text-text-muted hover:text-text",
+                                  )}
+                                >
+                                  {opt.label}
+                                </button>
+                              ))}
+                            </div>
+                            {customBuildable && (
+                              <>
+                                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-text-faint">
+                                  Price per house
+                                </div>
+                                <div className="flex items-center gap-2 rounded-xl border border-border-soft bg-surface-2 px-3.5">
+                                  <span className="font-mono text-sm text-text-faint">
+                                    {edition.currencySymbol}
+                                  </span>
+                                  <input
+                                    value={customHouseCost}
+                                    onChange={(e) =>
+                                      setCustomHouseCost(e.target.value.replace(/[^0-9]/g, ""))
+                                    }
+                                    inputMode="numeric"
+                                    placeholder="0"
+                                    className="h-11 w-full bg-transparent font-mono text-sm font-medium text-text outline-none"
+                                  />
+                                </div>
+                                {!Number(customHouseCost) && (
+                                  <p className="mt-1.5 text-xs text-text-faint">
+                                    Required — lets houses/hotels be tracked on this property.
+                                  </p>
+                                )}
+                              </>
+                            )}
+                          </div>
                         )}
                       </div>
                     ) : (

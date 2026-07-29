@@ -134,21 +134,24 @@ export const proposeEvent: MessageHandler = (ws, { gameId, userToken }, message)
         if (!event.name || !event.name.trim()) {
           return; // Every owned property must be named — no blank placeholders
         }
+        if (event.price < 0 || event.houseCost < 0) {
+          return; // Mortgage/build values are derived from these — can't be negative
+        }
         if (event.houses < 0 || event.houses > 4) {
           return; // Houses must be between 0 and 4 — a hotel replaces them
         }
         if (event.hasHotel && event.houses !== 0) {
           return; // A hotel replaces the 4 houses; they can't coexist
         }
+        if ((event.houses > 0 || event.hasHotel) && !event.buildable) {
+          return; // Can't build on a property that isn't buildable (railroads/
+          // utilities, or a freehand property bought without a house price)
+        }
         if (event.mortgaged && (event.houses > 0 || event.hasHotel)) {
           return; // Can't have buildings on a mortgaged property
         }
 
         const gameState = game.getGameState();
-        if (!gameState.trackProperties && (event.houses > 0 || event.hasHotel || event.mortgaged)) {
-          return; // House/hotel/mortgage mechanics need structured tracking —
-          // a bare ownership claim (for the profile card) is still fine.
-        }
         const currentOwner = gameState.properties[event.propertyId]?.ownerId ?? null;
         const isSelf = event.ownerId === playerId;
         const isCurrentOwner = currentOwner === playerId;
@@ -172,8 +175,19 @@ export const proposeEvent: MessageHandler = (ws, { gameId, userToken }, message)
       }
       case "trackPropertiesChange":
       case "allowAuctionChange":
+      case "trackHousePricesChange":
+      case "gameStarted":
         if (!isPlayerBanker) {
-          return; // Only the banker can change house rules
+          return; // Only the banker can change house rules or start the game
+        }
+        break;
+      case "playerStartingCashChange":
+        if (!isPlayerBanker) {
+          return; // Only the banker sets starting cash — it affects every
+          // player's fairness, not just the one being edited
+        }
+        if (event.amount < 0) {
+          return;
         }
         break;
     }

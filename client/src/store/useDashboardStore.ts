@@ -23,6 +23,9 @@ export interface RuntimePlayer {
 export interface RuntimeProperty {
   propertyId: string;
   name: string;
+  price: number;
+  buildable: boolean;
+  houseCost: number;
   ownerId: string | null;
   houses: number;
   hasHotel: boolean;
@@ -70,6 +73,11 @@ interface DashboardState {
   // setting, so every player agrees on what's actually in play.
   trackProperties: boolean;
   allowAuction: boolean;
+  trackHousePrices: boolean;
+  // Gates the automatic starting-cash payout — false while still in setup,
+  // so per-player overrides can be set before anyone actually gets paid.
+  started: boolean;
+  startingCashOverrides: Record<string, number>;
   useFreeParking: boolean;
   startedAt: number | null;
   status: "active" | "ended";
@@ -90,9 +98,14 @@ interface DashboardState {
   buyProperty: (propertyId: string, name: string) => boolean;
   // Buying with the "track properties" house rule off — no catalog slot to
   // pick from, so the property is named freehand and given a generated id.
-  // Still recorded as owned (just with no houses/hotel/mortgage mechanics)
-  // so it shows up as a card on the buyer's profile.
-  buyCustomProperty: (name: string, amount: number) => boolean;
+  // Still recorded as owned, and — if a house price was given — can still
+  // build/mortgage like a catalog property, so it shows up as a full card.
+  buyCustomProperty: (
+    name: string,
+    amount: number,
+    buildable: boolean,
+    houseCost: number,
+  ) => boolean;
   claimPropertyViaAuction: (propertyId: string, amount: number, name: string) => boolean;
   buildOnProperty: (propertyId: string) => boolean;
   sellBuildingOnProperty: (propertyId: string) => boolean;
@@ -100,6 +113,11 @@ interface DashboardState {
   unmortgageProperty: (propertyId: string) => boolean;
   setTrackProperties: (value: boolean) => boolean;
   setAllowAuction: (value: boolean) => boolean;
+  setTrackHousePrices: (value: boolean) => boolean;
+  // Explicit "start the game" trigger, sent once by the banker — unblocks
+  // the automatic starting-cash payout (see `started` above).
+  startGame: () => boolean;
+  setPlayerStartingCash: (playerId: string, amount: number) => boolean;
   setFreeParkingJackpot: (value: boolean) => boolean;
   endGame: () => boolean;
   disputeTransaction: (id: string) => boolean;
@@ -164,6 +182,9 @@ function deriveFromEvents(rawEvents: GameEvent[]) {
     properties: gameState.properties,
     trackProperties: gameState.trackProperties,
     allowAuction: gameState.allowAuction,
+    trackHousePrices: gameState.trackHousePrices,
+    started: gameState.started,
+    startingCashOverrides: gameState.startingCashOverrides,
     useFreeParking: gameState.useFreeParking,
   };
 }
@@ -181,14 +202,16 @@ const paidOrPendingStartingCash = new Set<string>();
 export const useDashboardStore = create<DashboardState>((set, get) => {
   // Only the banker's device may move money out of the bank (the server
   // enforces this too), so only it ever runs this — paying every player
-  // their starting cash the moment they're seen for the first time,
-  // exactly once, guarded against the async round-trip firing it twice.
+  // their starting cash once the game has actually started, exactly once,
+  // guarded against the async round-trip firing it twice. Gated on
+  // `started` (rather than "first seen") so the banker has the whole setup
+  // screen to set per-player starting-cash overrides before anyone's paid.
   function maybePayStartingCash() {
     const state = get();
     const selfPlayer = state.players.find((p) => p.id === state.selfId);
-    if (!selfPlayer?.isBanker || !state.selfId) return;
+    if (!selfPlayer?.isBanker || !state.selfId || !state.started) return;
 
-    const startingCash = EDITIONS[state.edition].startingCash;
+    const defaultStartingCash = EDITIONS[state.edition].startingCash;
 
     state.players.forEach((p) => {
       if (paidOrPendingStartingCash.has(p.id)) return;
@@ -203,7 +226,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         type: "transaction",
         from: BANK_ID,
         to: p.id,
-        amount: startingCash,
+        amount: state.startingCashOverrides[p.id] ?? defaultStartingCash,
         category: "bank-payout",
         memo: STARTING_CASH_MEMO,
       };
@@ -213,8 +236,18 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
 
   function applyDerivedUpdate(isIncremental: boolean) {
     const prevPlayers = get().players;
-    const { transactions, players, gameState, properties, trackProperties, allowAuction, useFreeParking } =
-      deriveFromEvents(rawEvents);
+    const {
+      transactions,
+      players,
+      gameState,
+      properties,
+      trackProperties,
+      allowAuction,
+      trackHousePrices,
+      started,
+      startingCashOverrides,
+      useFreeParking,
+    } = deriveFromEvents(rawEvents);
 
     const pulses = { ...get().pulses };
     const lastActivity = { ...get().lastActivity };
@@ -253,6 +286,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
       properties,
       trackProperties,
       allowAuction,
+      trackHousePrices,
+      started,
+      startingCashOverrides,
       useFreeParking,
       hasSynced: true,
     });
@@ -269,8 +305,11 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
     transactions: [],
     isLocked: false,
     properties: {},
-    trackProperties: true,
+    trackProperties: false,
     allowAuction: true,
+    trackHousePrices: true,
+    started: false,
+    startingCashOverrides: {},
     useFreeParking: true,
     startedAt: null,
     status: "active",
@@ -298,8 +337,11 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         pulses: {},
         lastActivity: {},
         properties: {},
-        trackProperties: true,
+        trackProperties: false,
         allowAuction: true,
+        trackHousePrices: true,
+        started: false,
+        startingCashOverrides: {},
         useFreeParking: true,
         bankBalance: 0,
         connectionStatus: "connecting",
@@ -408,6 +450,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         type: "propertyStateChange",
         propertyId,
         name: trimmedName,
+        price: def.price,
+        buildable: def.buildable,
+        houseCost: def.houseCost,
         ownerId: state.selfId,
         houses: 0,
         hasHotel: false,
@@ -417,10 +462,16 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
       return true;
     },
 
-    buyCustomProperty: (name, amount) => {
+    buyCustomProperty: (name, amount, buildable, houseCost) => {
       const state = get();
       const trimmedName = name.trim();
-      if (!state.selfId || state.connectionStatus !== "connected" || !trimmedName || amount <= 0) {
+      if (
+        !state.selfId ||
+        state.connectionStatus !== "connected" ||
+        !trimmedName ||
+        amount <= 0 ||
+        (buildable && houseCost <= 0)
+      ) {
         return false;
       }
 
@@ -436,6 +487,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         type: "propertyStateChange",
         propertyId: `custom-${crypto.randomUUID()}`,
         name: trimmedName,
+        price: amount,
+        buildable,
+        houseCost: buildable ? houseCost : 0,
         ownerId: state.selfId,
         houses: 0,
         hasHotel: false,
@@ -447,16 +501,22 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
 
     // A property that was declined and auctioned off at the table — same
     // as buying, except the amount is whatever it went for (can be above or
-    // below list price), entered by whoever's tracking the auction.
+    // below list price), entered by whoever's tracking the auction. Capped
+    // at the claiming player's current balance — unlike rent/tax, an
+    // auction bid is discretionary, so there's no legitimate case for
+    // committing to more than you actually have on hand.
     claimPropertyViaAuction: (propertyId, amount, name) => {
       const state = get();
       const trimmedName = name.trim();
+      const selfPlayer = state.players.find((p) => p.id === state.selfId);
       if (
         !state.selfId ||
         state.connectionStatus !== "connected" ||
         !state.trackProperties ||
         !state.allowAuction ||
-        !trimmedName
+        !trimmedName ||
+        !selfPlayer ||
+        amount > selfPlayer.balance
       ) {
         return false;
       }
@@ -476,6 +536,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         type: "propertyStateChange",
         propertyId,
         name: trimmedName,
+        price: def.price,
+        buildable: def.buildable,
+        houseCost: def.houseCost,
         ownerId: state.selfId,
         houses: 0,
         hasHotel: false,
@@ -487,13 +550,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
 
     buildOnProperty: (propertyId) => {
       const state = get();
-      if (!state.selfId || state.connectionStatus !== "connected" || !state.trackProperties) {
-        return false;
-      }
-      const def = propertyById(state.edition, propertyId);
-      if (!def || !def.buildable) return false;
+      if (!state.selfId || state.connectionStatus !== "connected") return false;
       const current = state.properties[propertyId];
-      if (!current || current.ownerId !== state.selfId || current.hasHotel || current.mortgaged) {
+      if (!current?.buildable) return false;
+      if (current.ownerId !== state.selfId || current.hasHotel || current.mortgaged) {
         return false;
       }
 
@@ -520,7 +580,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         type: "buy-property",
         fromId: state.selfId,
         toId: BANK_ID,
-        amount: def.houseCost,
+        amount: current.houseCost,
         memo: nextHasHotel ? `Hotel — ${current.name}` : `House — ${current.name}`,
       });
       const event: GameEvent = {
@@ -528,6 +588,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         type: "propertyStateChange",
         propertyId,
         name: current.name,
+        price: current.price,
+        buildable: current.buildable,
+        houseCost: current.houseCost,
         ownerId: current.ownerId,
         houses: nextHouses,
         hasHotel: nextHasHotel,
@@ -539,17 +602,13 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
 
     sellBuildingOnProperty: (propertyId) => {
       const state = get();
-      if (!state.selfId || state.connectionStatus !== "connected" || !state.trackProperties) {
-        return false;
-      }
-      const def = propertyById(state.edition, propertyId);
-      if (!def) return false;
+      if (!state.selfId || state.connectionStatus !== "connected") return false;
       const current = state.properties[propertyId];
       if (!current || current.ownerId !== state.selfId) return false;
       if (current.houses === 0 && !current.hasHotel) return false; // nothing to sell
 
       const nextHouses = current.hasHotel ? 4 : current.houses - 1;
-      const refund = Math.floor(def.houseCost / 2); // standard rule: half the build cost back
+      const refund = Math.floor(current.houseCost / 2); // standard rule: half the build cost back
 
       state.sendTransaction({
         type: "mortgage",
@@ -563,6 +622,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         type: "propertyStateChange",
         propertyId,
         name: current.name,
+        price: current.price,
+        buildable: current.buildable,
+        houseCost: current.houseCost,
         ownerId: current.ownerId,
         houses: nextHouses,
         hasHotel: false,
@@ -578,16 +640,12 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
     // on the players' honor, same as everything else money-related here).
     mortgageProperty: (propertyId) => {
       const state = get();
-      if (!state.selfId || state.connectionStatus !== "connected" || !state.trackProperties) {
-        return false;
-      }
-      const def = propertyById(state.edition, propertyId);
-      if (!def) return false;
+      if (!state.selfId || state.connectionStatus !== "connected") return false;
       const current = state.properties[propertyId];
       if (!current || current.ownerId !== state.selfId) return false;
       if (current.houses > 0 || current.hasHotel || current.mortgaged) return false;
 
-      const mortgageValue = Math.floor(def.price / 2);
+      const mortgageValue = Math.floor(current.price / 2);
       state.sendTransaction({
         type: "mortgage",
         fromId: BANK_ID,
@@ -600,6 +658,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         type: "propertyStateChange",
         propertyId,
         name: current.name,
+        price: current.price,
+        buildable: current.buildable,
+        houseCost: current.houseCost,
         ownerId: current.ownerId,
         houses: 0,
         hasHotel: false,
@@ -633,6 +694,42 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
       return true;
     },
 
+    setTrackHousePrices: (value) => {
+      const state = get();
+      if (!state.selfId || state.connectionStatus !== "connected") return false;
+      const event: GameEvent = {
+        ...eventBase(state.selfId),
+        type: "trackHousePricesChange",
+        trackHousePrices: value,
+      };
+      socket?.proposeEvent(event);
+      return true;
+    },
+
+    startGame: () => {
+      const state = get();
+      if (!state.selfId || state.connectionStatus !== "connected") return false;
+      const event: GameEvent = {
+        ...eventBase(state.selfId),
+        type: "gameStarted",
+      };
+      socket?.proposeEvent(event);
+      return true;
+    },
+
+    setPlayerStartingCash: (playerId, amount) => {
+      const state = get();
+      if (!state.selfId || state.connectionStatus !== "connected" || amount < 0) return false;
+      const event: GameEvent = {
+        ...eventBase(state.selfId),
+        type: "playerStartingCashChange",
+        playerId,
+        amount,
+      };
+      socket?.proposeEvent(event);
+      return true;
+    },
+
     setFreeParkingJackpot: (value) => {
       const state = get();
       if (!state.selfId || state.connectionStatus !== "connected") return false;
@@ -648,15 +745,11 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
     // Standard rule: pay back the mortgage value plus 10% interest to lift it.
     unmortgageProperty: (propertyId) => {
       const state = get();
-      if (!state.selfId || state.connectionStatus !== "connected" || !state.trackProperties) {
-        return false;
-      }
-      const def = propertyById(state.edition, propertyId);
-      if (!def) return false;
+      if (!state.selfId || state.connectionStatus !== "connected") return false;
       const current = state.properties[propertyId];
       if (!current || current.ownerId !== state.selfId || !current.mortgaged) return false;
 
-      const payoff = Math.ceil((def.price / 2) * 1.1);
+      const payoff = Math.ceil((current.price / 2) * 1.1);
       state.sendTransaction({
         type: "mortgage",
         fromId: state.selfId,
@@ -669,6 +762,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         type: "propertyStateChange",
         propertyId,
         name: current.name,
+        price: current.price,
+        buildable: current.buildable,
+        houseCost: current.houseCost,
         ownerId: current.ownerId,
         houses: 0,
         hasHotel: false,

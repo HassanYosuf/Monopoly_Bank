@@ -8,8 +8,11 @@ export const defaultGameState: IGameState = {
   showOppositionBalances: true,
   freeParkingBalance: 0,
   open: true,
-  trackProperties: true,
-  allowAuction: true
+  trackProperties: false,
+  allowAuction: true,
+  trackHousePrices: true,
+  started: false,
+  startingCashOverrides: {}
 };
 
 export const calculateGameState = (events: GameEvent[], currentState: IGameState): IGameState => {
@@ -176,6 +179,9 @@ export const calculateGameState = (events: GameEvent[], currentState: IGameState
             [event.propertyId]: {
               propertyId: event.propertyId,
               name: event.name,
+              price: event.price,
+              buildable: event.buildable,
+              houseCost: event.houseCost,
               ownerId: event.ownerId,
               houses: event.houses,
               hasHotel: event.hasHotel,
@@ -194,6 +200,27 @@ export const calculateGameState = (events: GameEvent[], currentState: IGameState
         return {
           ...state,
           allowAuction: event.allowAuction
+        };
+
+      case "trackHousePricesChange":
+        return {
+          ...state,
+          trackHousePrices: event.trackHousePrices
+        };
+
+      case "gameStarted":
+        return {
+          ...state,
+          started: true
+        };
+
+      case "playerStartingCashChange":
+        return {
+          ...state,
+          startingCashOverrides: {
+            ...state.startingCashOverrides,
+            [event.playerId]: event.amount
+          }
         };
     }
   }, currentState);

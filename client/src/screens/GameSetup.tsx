@@ -134,17 +134,26 @@ function GameIdHeader() {
 }
 
 function PlayerRow({
+  id,
   name,
   token,
   isBanker,
   isOnline,
+  defaultStartingCash,
+  startingCashOverride,
+  currencySymbol,
 }: {
+  id: string;
   name: string;
   token: TokenId;
   isBanker: boolean;
   isOnline: boolean;
+  defaultStartingCash: number;
+  startingCashOverride: number | undefined;
+  currencySymbol: string;
 }) {
   const renameSelf = useDashboardStore((s) => s.renameSelf);
+  const setPlayerStartingCash = useDashboardStore((s) => s.setPlayerStartingCash);
   return (
     <motion.div
       layout
@@ -188,6 +197,24 @@ function PlayerRow({
             Banker · this device
           </div>
         )}
+      </div>
+      <div className="flex shrink-0 items-center gap-1 rounded-xl border border-border-soft bg-surface px-2.5">
+        <span className="font-mono text-xs text-text-faint">{currencySymbol}</span>
+        <input
+          key={startingCashOverride ?? defaultStartingCash}
+          defaultValue={startingCashOverride ?? defaultStartingCash}
+          onChange={(e) => (e.target.value = e.target.value.replace(/[^0-9]/g, ""))}
+          onBlur={(e) => {
+            const amount = Number(e.target.value);
+            if (Number.isFinite(amount) && amount >= 0) {
+              setPlayerStartingCash(id, amount);
+            }
+          }}
+          onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+          inputMode="numeric"
+          aria-label={`${name}'s starting cash`}
+          className="w-16 bg-transparent py-2 text-right font-mono text-xs font-bold text-text outline-none"
+        />
       </div>
     </motion.div>
   );
@@ -235,6 +262,10 @@ export function GameSetup() {
   const setTrackProperties = useDashboardStore((s) => s.setTrackProperties);
   const allowAuction = useDashboardStore((s) => s.allowAuction);
   const setAllowAuction = useDashboardStore((s) => s.setAllowAuction);
+  const trackHousePrices = useDashboardStore((s) => s.trackHousePrices);
+  const setTrackHousePrices = useDashboardStore((s) => s.setTrackHousePrices);
+  const startingCashOverrides = useDashboardStore((s) => s.startingCashOverrides);
+  const startGame = useDashboardStore((s) => s.startGame);
   const edition = EDITIONS[editionId];
 
   return (
@@ -273,13 +304,19 @@ export function GameSetup() {
             Players · {players.length}
           </h2>
           <span className="font-mono text-xs text-text-faint">
-            Starting cash {formatCurrency(edition.startingCash, edition)}
+            Default starting cash {formatCurrency(edition.startingCash, edition)} — tap a player's amount to change it
           </span>
         </div>
         <div className="flex flex-col gap-2">
           <AnimatePresence initial={false}>
             {players.map((p) => (
-              <PlayerRow key={p.id} {...p} />
+              <PlayerRow
+                key={p.id}
+                {...p}
+                defaultStartingCash={edition.startingCash}
+                startingCashOverride={startingCashOverrides[p.id]}
+                currencySymbol={edition.currencySymbol}
+              />
             ))}
           </AnimatePresence>
           {players.length < 2 && (
@@ -325,6 +362,13 @@ export function GameSetup() {
             onCheckedChange={(v) => setAllowAuction(v)}
             disabled={!trackProperties}
           />
+          <RuleToggle
+            label="Ask for house price"
+            description="With Track properties off, also ask for a per-house build price when buying — so houses/hotels can still be tracked on that property."
+            checked={trackHousePrices}
+            onCheckedChange={(v) => setTrackHousePrices(v)}
+            disabled={trackProperties}
+          />
         </div>
       </section>
 
@@ -338,7 +382,10 @@ export function GameSetup() {
             size="lg"
             className="ml-auto w-full sm:w-auto sm:flex-1"
             disabled={players.length < 2}
-            onClick={() => goTo("dashboard")}
+            onClick={() => {
+              startGame();
+              goTo("dashboard");
+            }}
           >
             Start Game ({players.length} {players.length === 1 ? "player" : "players"})
           </Button>

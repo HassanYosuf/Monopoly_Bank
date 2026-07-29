@@ -32,6 +32,9 @@ export function PropertyManageSheet({
   const [customName, setCustomName] = useState("");
 
   const edition = EDITIONS[editionId];
+  // Properties bought with "Track Properties" off aren't in the fixed
+  // catalog (they're named freehand at purchase time), so there's no
+  // color-group def for them — just whatever got recorded as `current`.
   const def = propertyId ? propertyById(editionId, propertyId) : undefined;
   const current = propertyId ? properties[propertyId] : undefined;
   const owner = current?.ownerId ? players.find((p) => p.id === current.ownerId) : undefined;
@@ -39,6 +42,12 @@ export function PropertyManageSheet({
   const isBanker = selfPlayer?.isBanker ?? false;
   const isMine = current?.ownerId === selfId;
   const canManage = isMine || isBanker;
+
+  const displayName = current?.name ?? def?.name ?? "";
+  const displayPrice = current?.price ?? def?.price ?? 0;
+  const buildable = current?.buildable ?? def?.buildable ?? false;
+  const houseCost = current?.houseCost ?? def?.houseCost ?? 0;
+  const auctionBidTooHigh = Number(auctionAmount) > (selfPlayer?.balance ?? 0);
 
   useEffect(() => {
     setCustomName(def && !current?.ownerId ? def.name : "");
@@ -66,9 +75,11 @@ export function PropertyManageSheet({
   function handleAuctionClaim() {
     if (!def || !customName.trim()) return;
     const amount = Number(auctionAmount);
-    if (!amount || amount <= 0) return;
+    if (!amount || amount <= 0 || auctionBidTooHigh) return;
     if (!claimPropertyViaAuction(def.id, amount, customName)) {
-      toast.error("Couldn't claim — you're offline right now.", { icon: "📡" });
+      toast.error("Couldn't claim — you're offline, or that's more than your balance.", {
+        icon: "📡",
+      });
       return;
     }
     toast.success(`Won ${customName.trim()} at auction for ${formatCurrency(amount, edition)}`, {
@@ -78,69 +89,69 @@ export function PropertyManageSheet({
   }
 
   function handleBuild() {
-    if (!def) return;
-    if (!buildOnProperty(def.id)) {
+    if (!propertyId) return;
+    if (!buildOnProperty(propertyId)) {
       toast.error(
         current?.hasHotel ? "Already at a hotel — that's the max." : "Couldn't build right now.",
       );
       return;
     }
-    toast.success(`Built on ${current?.name ?? def.name}`, { icon: "🏗️" });
+    toast.success(`Built on ${displayName}`, { icon: "🏗️" });
   }
 
   function handleSell() {
-    if (!def) return;
-    if (!sellBuildingOnProperty(def.id)) {
+    if (!propertyId) return;
+    if (!sellBuildingOnProperty(propertyId)) {
       toast.error("Couldn't sell — you're offline right now.", { icon: "📡" });
       return;
     }
-    toast.success(`Sold a building on ${current?.name ?? def.name}`, { icon: "💰" });
+    toast.success(`Sold a building on ${displayName}`, { icon: "💰" });
   }
 
   function handleMortgage() {
-    if (!def) return;
-    if (!mortgageProperty(def.id)) {
+    if (!propertyId) return;
+    if (!mortgageProperty(propertyId)) {
       toast.error("Couldn't mortgage — sell any houses/hotel here first.");
       return;
     }
-    toast.success(`Mortgaged ${current?.name ?? def.name} for ${formatCurrency(Math.floor(def.price / 2), edition)}`, {
+    toast.success(`Mortgaged ${displayName} for ${formatCurrency(Math.floor(displayPrice / 2), edition)}`, {
       icon: "🔒",
     });
   }
 
   function handleUnmortgage() {
-    if (!def) return;
-    if (!unmortgageProperty(def.id)) {
+    if (!propertyId) return;
+    if (!unmortgageProperty(propertyId)) {
       toast.error("Couldn't unmortgage — you're offline right now.", { icon: "📡" });
       return;
     }
-    toast.success(`Unmortgaged ${current?.name ?? def.name}`, { icon: "🔓" });
+    toast.success(`Unmortgaged ${displayName}`, { icon: "🔓" });
   }
 
   return (
     <Dialog open={!!propertyId} onOpenChange={(next) => !next && closeAndReset()}>
       <DialogContent>
-        {def && (
+        {(def || current) && (
           <>
             <div className="mb-1 flex items-center gap-2">
               <span
                 className="h-3 w-3 shrink-0 rounded-full"
-                style={{ backgroundColor: COLOR_GROUP_SWATCH[def.group] }}
+                style={{ backgroundColor: def ? COLOR_GROUP_SWATCH[def.group] : "#9ca3af" }}
               />
               <span className="text-xs font-semibold uppercase tracking-[0.1em] text-text-faint">
-                {COLOR_GROUP_LABEL[def.group]}
+                {def ? COLOR_GROUP_LABEL[def.group] : "Property"}
               </span>
             </div>
             <DialogTitle className="font-display text-xl font-bold text-text">
-              {current?.name ?? def.name}
+              {displayName}
             </DialogTitle>
             <DialogDescription className="mt-1 text-sm text-text-muted">
-              {formatCurrency(def.price, edition)}
-              {def.buildable && <> · {formatCurrency(def.houseCost, edition)} per house</>}
+              {formatCurrency(displayPrice, edition)}
+              {buildable && <> · {formatCurrency(houseCost, edition)} per house</>}
             </DialogDescription>
 
             <div className="mt-4">
-              {!owner && (
+              {!owner && def && (
                 <div className="mb-3">
                   <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.1em] text-text-faint">
                     <span>Name this property</span>
@@ -156,7 +167,7 @@ export function PropertyManageSheet({
                   />
                 </div>
               )}
-              {!owner ? (
+              {!owner && def ? (
                 auctionMode ? (
                   <div className="rounded-2xl border border-border-soft bg-surface-2 p-4">
                     <div className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-text-faint">
@@ -175,13 +186,19 @@ export function PropertyManageSheet({
                         className="h-12 w-full bg-transparent font-mono text-lg font-bold text-text outline-none"
                       />
                     </div>
+                    {auctionBidTooHigh && (
+                      <p className="mb-3 text-xs font-semibold text-red">
+                        That's more than your current balance
+                        {selfPlayer && ` (${formatCurrency(selfPlayer.balance, edition)})`}.
+                      </p>
+                    )}
                     <div className="flex gap-2">
                       <Button variant="secondary" className="flex-1" onClick={() => setAuctionMode(false)}>
                         Cancel
                       </Button>
                       <Button
                         className="flex-1"
-                        disabled={!Number(auctionAmount) || !customName.trim()}
+                        disabled={!Number(auctionAmount) || !customName.trim() || auctionBidTooHigh}
                         onClick={handleAuctionClaim}
                       >
                         Claim
@@ -204,7 +221,7 @@ export function PropertyManageSheet({
                     )}
                   </div>
                 )
-              ) : (
+              ) : owner ? (
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center gap-2 rounded-full border border-border-soft bg-surface-2 py-1.5 pl-1.5 pr-3.5 text-sm font-semibold text-text">
                     <TokenBadge token={owner.token} size={28} />
@@ -221,7 +238,7 @@ export function PropertyManageSheet({
                     </div>
                   )}
 
-                  {def.buildable && !current?.mortgaged && (
+                  {buildable && !current?.mortgaged && (
                     <div className="flex items-center justify-between rounded-2xl border border-border-soft bg-surface-2 p-3.5">
                       <div className="flex items-center gap-1.5">
                         {current?.hasHotel ? (
@@ -273,18 +290,18 @@ export function PropertyManageSheet({
                         <>
                           <Unlock className="h-4 w-4" />
                           Unmortgage for{" "}
-                          {formatCurrency(Math.ceil((def.price / 2) * 1.1), edition)}
+                          {formatCurrency(Math.ceil((displayPrice / 2) * 1.1), edition)}
                         </>
                       ) : (
                         <>
                           <Landmark className="h-4 w-4" />
-                          Mortgage for {formatCurrency(Math.floor(def.price / 2), edition)}
+                          Mortgage for {formatCurrency(Math.floor(displayPrice / 2), edition)}
                         </>
                       )}
                     </Button>
                   )}
                 </div>
-              )}
+              ) : null}
             </div>
           </>
         )}

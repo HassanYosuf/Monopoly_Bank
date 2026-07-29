@@ -20,6 +20,16 @@ export interface IGameStateProperty {
   // vary too widely across editions/regions to hardcode, so every owned
   // property is named at purchase time rather than looked up from a catalog.
   name: string;
+  // Face value the mortgage/unmortgage payout is calculated from — the
+  // catalog price for a tracked-board property, or whatever was actually
+  // paid for a freehand one (there's no printed price to fall back on).
+  price: number;
+  // Whether houses/hotels can go on this square at all (railroads/utilities
+  // never can), and what one house costs — for a catalog property this
+  // mirrors the fixed board data, for a freehand one it's whatever the
+  // buyer entered (or "not buildable" if they skipped it).
+  buildable: boolean;
+  houseCost: number;
   ownerId: PlayerId | null;
   houses: number; // 0-4; a hotel replaces these, so houses is always 0 once hasHotel is true
   hasHotel: boolean;
@@ -39,6 +49,18 @@ export interface IGameState {
   // what's even allowed.
   trackProperties: boolean;
   allowAuction: boolean;
+  // Whether buying a freehand (untracked) property also asks for a
+  // per-house build price, so houses/hotels can still be tracked for it.
+  // Irrelevant when trackProperties is on — catalog properties already
+  // carry a fixed house cost.
+  trackHousePrices: boolean;
+  // Flips true once the banker taps "Start Game" — gates the automatic
+  // starting-cash payout so it waits for any per-player overrides to be
+  // set during setup instead of firing the instant a player joins the lobby.
+  started: boolean;
+  // Per-player starting cash, set by the banker during setup. A player with
+  // no entry here gets the edition's default when they're paid out.
+  startingCashOverrides: Record<PlayerId, number>;
 }
 
 // Game events
@@ -56,7 +78,10 @@ export type GameEvent =
   | IPlayerConnectionChangeEvent
   | IPropertyStateChangeEvent
   | ITrackPropertiesChangeEvent
-  | IAllowAuctionChangeEvent;
+  | IAllowAuctionChangeEvent
+  | ITrackHousePricesChangeEvent
+  | IGameStartedEvent
+  | IPlayerStartingCashChangeEvent;
 
 export interface IGameEvent {
   id: string;
@@ -130,6 +155,9 @@ export interface IPropertyStateChangeEvent extends IGameEvent {
   type: "propertyStateChange";
   propertyId: string;
   name: string;
+  price: number;
+  buildable: boolean;
+  houseCost: number;
   ownerId: PlayerId | null;
   houses: number;
   hasHotel: boolean;
@@ -144,4 +172,19 @@ export interface ITrackPropertiesChangeEvent extends IGameEvent {
 export interface IAllowAuctionChangeEvent extends IGameEvent {
   type: "allowAuctionChange";
   allowAuction: boolean;
+}
+
+export interface ITrackHousePricesChangeEvent extends IGameEvent {
+  type: "trackHousePricesChange";
+  trackHousePrices: boolean;
+}
+
+export interface IGameStartedEvent extends IGameEvent {
+  type: "gameStarted";
+}
+
+export interface IPlayerStartingCashChangeEvent extends IGameEvent {
+  type: "playerStartingCashChange";
+  playerId: PlayerId;
+  amount: number;
 }
