@@ -131,6 +131,9 @@ export const proposeEvent: MessageHandler = (ws, { gameId, userToken }, message)
         }
         break;
       case "propertyStateChange": {
+        if (!event.name || !event.name.trim()) {
+          return; // Every owned property must be named — no blank placeholders
+        }
         if (event.houses < 0 || event.houses > 4) {
           return; // Houses must be between 0 and 4 — a hotel replaces them
         }
@@ -142,8 +145,9 @@ export const proposeEvent: MessageHandler = (ws, { gameId, userToken }, message)
         }
 
         const gameState = game.getGameState();
-        if (!gameState.trackProperties) {
-          return; // This game has opted out of structured property tracking
+        if (!gameState.trackProperties && (event.houses > 0 || event.hasHotel || event.mortgaged)) {
+          return; // House/hotel/mortgage mechanics need structured tracking —
+          // a bare ownership claim (for the profile card) is still fine.
         }
         const currentOwner = gameState.properties[event.propertyId]?.ownerId ?? null;
         const isSelf = event.ownerId === playerId;

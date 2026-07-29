@@ -13,7 +13,7 @@ import {
   type Direction,
   type TransactionTypeId,
 } from "@/lib/transactionTypes";
-import { PROPERTIES } from "@/lib/properties";
+import { COLOR_GROUP_LABEL, PROPERTIES, propertyById } from "@/lib/properties";
 import { TokenBadge } from "@/components/icons/token-badge";
 import { Keypad } from "@/components/transaction/Keypad";
 import { cn } from "@/lib/utils";
@@ -41,6 +41,7 @@ export function TransactionSheet({
   const editionId = useDashboardStore((s) => s.edition);
   const sendTransaction = useDashboardStore((s) => s.sendTransaction);
   const buyProperty = useDashboardStore((s) => s.buyProperty);
+  const buyCustomProperty = useDashboardStore((s) => s.buyCustomProperty);
   const ownedProperties = useDashboardStore((s) => s.properties);
   const trackProperties = useDashboardStore((s) => s.trackProperties);
   const isOnline = useDashboardStore((s) => s.connectionStatus === "connected");
@@ -56,10 +57,11 @@ export function TransactionSheet({
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const [flying, setFlying] = useState<FlyState | null>(null);
 
-  // When the "track properties" house rule is off, Buy Property just
-  // behaves like every other free-text transaction — no mandatory picker,
-  // no ownership event.
-  const isBuyProperty = typeId === "buy-property" && trackProperties;
+  const isBuyProperty = typeId === "buy-property";
+  // The catalog picker only makes sense when properties are actually being
+  // tracked — with the house rule off there's no ownership record to pick
+  // into, so it's just a plain named bank payment instead.
+  const showPropertyPicker = isBuyProperty && trackProperties;
   const unownedProperties = PROPERTIES[editionId].filter((p) => !ownedProperties[p.id]?.ownerId);
 
   const amountRef = useRef<HTMLDivElement>(null);
@@ -135,10 +137,19 @@ export function TransactionSheet({
     setAmount((a) => Math.min(a + value, MAX_AMOUNT));
   }
 
+  // Mirrors the server's authorization rule (messageHandlers.ts): only the
+  // banker can pull money out of the bank. Kept here too so a non-banker
+  // can't end up sending something the server will just silently drop.
+  const receivingFromBankAsNonBanker =
+    !bankPaysAnyPlayer && counterparty === "bank" && direction === "receive" && !isBanker;
+
   const canSend =
     isOnline &&
     amount > 0 &&
-    (isBuyProperty ? !!selectedPropertyId : true) &&
+    !receivingFromBankAsNonBanker &&
+    (isBuyProperty
+      ? !!memo.trim() && (!showPropertyPicker || !!selectedPropertyId)
+      : true) &&
     (bankPaysAnyPlayer
       ? !!recipientId
       : counterparty === "bank" || (counterparty === "player" && recipientId));
@@ -178,9 +189,11 @@ export function TransactionSheet({
 
   function commit(legs: { fromId: string; toId: string }) {
     if (!type) return;
-    const sent = isBuyProperty
-      ? buyProperty(selectedPropertyId!)
-      : sendTransaction({ type: type.id, fromId: legs.fromId, toId: legs.toId, amount, memo });
+    const sent = showPropertyPicker
+      ? buyProperty(selectedPropertyId!, memo)
+      : isBuyProperty
+        ? buyCustomProperty(memo, amount)
+        : sendTransaction({ type: type.id, fromId: legs.fromId, toId: legs.toId, amount, memo });
 
     if (!sent) {
       toast.error("Couldn't send — you're offline. Try again once you're back online.", {
@@ -217,7 +230,7 @@ export function TransactionSheet({
       <Drawer.Root open={open} onOpenChange={handleOpenChange}>
         <Drawer.Portal>
           <Drawer.Overlay className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" />
-          <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[88vh] w-full max-w-md flex-col rounded-t-3xl border border-border bg-surface pb-[env(safe-area-inset-bottom)] outline-none sm:max-w-lg">
+          <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[88dvh] w-full max-w-md flex-col rounded-t-3xl border border-border bg-surface pb-[env(safe-area-inset-bottom)] outline-none sm:max-w-lg">
             <Drawer.Title className="sr-only">New Transaction</Drawer.Title>
             <div className="mx-auto mt-3 h-1.5 w-10 shrink-0 rounded-full bg-surface-3" />
 
@@ -294,7 +307,18 @@ export function TransactionSheet({
                         {(["pay", "receive"] as Direction[]).map((d) => (
                           <button
                             key={d}
-                            onClick={() => setDirection(d)}
+                            onClick={() => {
+                              setDirection(d);
+                              // Only the banker can pull money out of the bank — if a
+                              // non-banker switches to "receiving" while Bank is the
+                              // counterparty, drop back to picking a player instead.
+                              // (The server would silently reject this anyway; this
+                              // just avoids showing a false success toast for it.)
+                              if (d === "receive" && counterparty === "bank" && !isBanker) {
+                                setCounterparty("player");
+                                setRecipientId(null);
+                              }
+                            }}
                             className={cn(
                               "flex-1 rounded-full py-2 text-sm font-bold transition-colors",
                               direction === d
@@ -366,7 +390,9 @@ export function TransactionSheet({
                             </button>
                           ))}
 
-                        {!bankPaysAnyPlayer && (counterparty === "bank" || type.counterpartyEditable) && (
+                        {!bankPaysAnyPlayer &&
+                          (counterparty === "bank" || type.counterpartyEditable) &&
+                          !(direction === "receive" && !isBanker) && (
                           <button
                             ref={bankBadgeRef}
                             onClick={() => {
@@ -398,7 +424,7 @@ export function TransactionSheet({
                       </div>
                     </div>
 
-                    {isBuyProperty ? (
+                    {showPropertyPicker ? (
                       <div className="mb-5">
                         <div className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-text-faint">
                           Which property?
@@ -431,6 +457,48 @@ export function TransactionSheet({
                             ))}
                           </div>
                         )}
+
+                        {selectedPropertyId && (() => {
+                          const selectedDef = propertyById(editionId, selectedPropertyId);
+                          if (!selectedDef) return null;
+                          return (
+                            <div className="mt-3">
+                              <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.1em] text-text-faint">
+                                <span>Name this property</span>
+                                <span className="rounded-full bg-surface-3 px-2 py-0.5 text-[0.65rem] font-bold normal-case tracking-normal text-text-muted">
+                                  {selectedDef.buildable ? "City" : COLOR_GROUP_LABEL[selectedDef.group]}
+                                </span>
+                              </div>
+                              <input
+                                value={memo}
+                                onChange={(e) => setMemo(e.target.value)}
+                                placeholder="What's this square called on your board?"
+                                autoFocus
+                                className="h-11 w-full rounded-xl border border-border-soft bg-surface-2 px-3.5 text-sm font-medium text-text outline-none placeholder:text-text-faint focus:border-gold focus:ring-2 focus:ring-focus"
+                              />
+                              {!memo.trim() && (
+                                <p className="mt-1.5 text-xs text-text-faint">
+                                  Required — matches whatever's actually printed on the board you're playing.
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    ) : isBuyProperty ? (
+                      <div className="mb-5">
+                        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-text-faint">
+                          Property name
+                        </div>
+                        <input
+                          value={memo}
+                          onChange={(e) => setMemo(e.target.value)}
+                          placeholder="What's this square called on your board?"
+                          className="h-11 w-full rounded-xl border border-border-soft bg-surface-2 px-3.5 text-sm font-medium text-text outline-none placeholder:text-text-faint focus:border-gold focus:ring-2 focus:ring-focus"
+                        />
+                        {!memo.trim() && (
+                          <p className="mt-1.5 text-xs text-text-faint">Required</p>
+                        )}
                       </div>
                     ) : (
                       <input
@@ -449,7 +517,7 @@ export function TransactionSheet({
                       {formatAmount(amount, edition)}
                     </div>
 
-                    {!isBuyProperty && (
+                    {!showPropertyPicker && (
                       <>
                         <div className="mb-4 flex justify-center gap-2">
                           {edition.quickAmounts.map((q) => (
@@ -483,7 +551,7 @@ export function TransactionSheet({
                       onClick={handleSend}
                       disabled={!canSend}
                       className={cn(
-                        "mt-3 flex h-14 w-full items-center justify-center gap-2 rounded-full text-base font-bold transition-all active:scale-[0.97]",
+                        "mt-3 flex h-16 w-full shrink-0 items-center justify-center gap-2 rounded-full text-base font-bold transition-all active:scale-[0.97]",
                         canSend
                           ? "bg-green text-[#06170F] shadow-[0_6px_16px_-6px_rgba(33,165,103,0.55)] hover:brightness-110"
                           : "cursor-not-allowed bg-surface-2 text-text-faint",

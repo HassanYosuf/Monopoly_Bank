@@ -145,7 +145,9 @@ export function Properties() {
                       className="flex items-center justify-between gap-3 rounded-2xl border border-border-soft bg-surface p-4 text-left transition-colors active:scale-[0.98] hover:bg-surface-2"
                     >
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-bold text-text">{def.name}</div>
+                        <div className="truncate text-sm font-bold text-text">
+                          {current?.name ?? def.name}
+                        </div>
                         <div className="mt-0.5 flex items-center gap-1.5 font-mono text-xs text-text-faint">
                           {formatCurrency(def.price, edition)}
                           {current?.mortgaged && (

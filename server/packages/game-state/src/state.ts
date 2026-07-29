@@ -175,6 +175,7 @@ export const calculateGameState = (events: GameEvent[], currentState: IGameState
             ...state.properties,
             [event.propertyId]: {
               propertyId: event.propertyId,
+              name: event.name,
               ownerId: event.ownerId,
               houses: event.houses,
               hasHotel: event.hasHotel,

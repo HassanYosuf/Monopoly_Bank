@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Building2, Gavel, Home, Landmark, Lock, Minus, Plus, Unlock } from "lucide-react";
 import { toast } from "sonner";
 import { useDashboardStore } from "@/store/useDashboardStore";
@@ -29,6 +29,7 @@ export function PropertyManageSheet({
 
   const [auctionMode, setAuctionMode] = useState(false);
   const [auctionAmount, setAuctionAmount] = useState("");
+  const [customName, setCustomName] = useState("");
 
   const edition = EDITIONS[editionId];
   const def = propertyId ? propertyById(editionId, propertyId) : undefined;
@@ -39,31 +40,38 @@ export function PropertyManageSheet({
   const isMine = current?.ownerId === selfId;
   const canManage = isMine || isBanker;
 
+  useEffect(() => {
+    setCustomName(def && !current?.ownerId ? def.name : "");
+  }, [propertyId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function closeAndReset() {
     setAuctionMode(false);
     setAuctionAmount("");
+    setCustomName("");
     onClose();
   }
 
   function handleBuy() {
-    if (!def) return;
-    if (!buyProperty(def.id)) {
+    if (!def || !customName.trim()) return;
+    if (!buyProperty(def.id, customName)) {
       toast.error("Couldn't buy — you're offline right now.", { icon: "📡" });
       return;
     }
-    toast.success(`Bought ${def.name} for ${formatCurrency(def.price, edition)}`, { icon: "🏠" });
+    toast.success(`Bought ${customName.trim()} for ${formatCurrency(def.price, edition)}`, {
+      icon: "🏠",
+    });
     closeAndReset();
   }
 
   function handleAuctionClaim() {
-    if (!def) return;
+    if (!def || !customName.trim()) return;
     const amount = Number(auctionAmount);
     if (!amount || amount <= 0) return;
-    if (!claimPropertyViaAuction(def.id, amount)) {
+    if (!claimPropertyViaAuction(def.id, amount, customName)) {
       toast.error("Couldn't claim — you're offline right now.", { icon: "📡" });
       return;
     }
-    toast.success(`Won ${def.name} at auction for ${formatCurrency(amount, edition)}`, {
+    toast.success(`Won ${customName.trim()} at auction for ${formatCurrency(amount, edition)}`, {
       icon: "🔨",
     });
     closeAndReset();
@@ -77,7 +85,7 @@ export function PropertyManageSheet({
       );
       return;
     }
-    toast.success(`Built on ${def.name}`, { icon: "🏗️" });
+    toast.success(`Built on ${current?.name ?? def.name}`, { icon: "🏗️" });
   }
 
   function handleSell() {
@@ -86,7 +94,7 @@ export function PropertyManageSheet({
       toast.error("Couldn't sell — you're offline right now.", { icon: "📡" });
       return;
     }
-    toast.success(`Sold a building on ${def.name}`, { icon: "💰" });
+    toast.success(`Sold a building on ${current?.name ?? def.name}`, { icon: "💰" });
   }
 
   function handleMortgage() {
@@ -95,7 +103,7 @@ export function PropertyManageSheet({
       toast.error("Couldn't mortgage — sell any houses/hotel here first.");
       return;
     }
-    toast.success(`Mortgaged ${def.name} for ${formatCurrency(Math.floor(def.price / 2), edition)}`, {
+    toast.success(`Mortgaged ${current?.name ?? def.name} for ${formatCurrency(Math.floor(def.price / 2), edition)}`, {
       icon: "🔒",
     });
   }
@@ -106,7 +114,7 @@ export function PropertyManageSheet({
       toast.error("Couldn't unmortgage — you're offline right now.", { icon: "📡" });
       return;
     }
-    toast.success(`Unmortgaged ${def.name}`, { icon: "🔓" });
+    toast.success(`Unmortgaged ${current?.name ?? def.name}`, { icon: "🔓" });
   }
 
   return (
@@ -124,7 +132,7 @@ export function PropertyManageSheet({
               </span>
             </div>
             <DialogTitle className="font-display text-xl font-bold text-text">
-              {def.name}
+              {current?.name ?? def.name}
             </DialogTitle>
             <DialogDescription className="mt-1 text-sm text-text-muted">
               {formatCurrency(def.price, edition)}
@@ -132,6 +140,22 @@ export function PropertyManageSheet({
             </DialogDescription>
 
             <div className="mt-4">
+              {!owner && (
+                <div className="mb-3">
+                  <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.1em] text-text-faint">
+                    <span>Name this property</span>
+                    <span className="rounded-full bg-surface-3 px-2 py-0.5 text-[0.65rem] font-bold normal-case tracking-normal text-text-muted">
+                      {def.buildable ? "City" : COLOR_GROUP_LABEL[def.group]}
+                    </span>
+                  </div>
+                  <input
+                    value={customName}
+                    onChange={(e) => setCustomName(e.target.value)}
+                    placeholder="What's this square called on your board?"
+                    className="h-11 w-full rounded-xl border border-border-soft bg-surface-2 px-3.5 text-sm font-medium text-text outline-none placeholder:text-text-faint focus:border-gold focus:ring-2 focus:ring-focus"
+                  />
+                </div>
+              )}
               {!owner ? (
                 auctionMode ? (
                   <div className="rounded-2xl border border-border-soft bg-surface-2 p-4">
@@ -157,7 +181,7 @@ export function PropertyManageSheet({
                       </Button>
                       <Button
                         className="flex-1"
-                        disabled={!Number(auctionAmount)}
+                        disabled={!Number(auctionAmount) || !customName.trim()}
                         onClick={handleAuctionClaim}
                       >
                         Claim
@@ -166,7 +190,7 @@ export function PropertyManageSheet({
                   </div>
                 ) : (
                   <div className="flex flex-col gap-2">
-                    <Button className="w-full gap-2" onClick={handleBuy}>
+                    <Button className="w-full gap-2" disabled={!customName.trim()} onClick={handleBuy}>
                       Buy for {formatCurrency(def.price, edition)}
                     </Button>
                     {allowAuction && (

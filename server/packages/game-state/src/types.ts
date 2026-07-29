@@ -16,6 +16,10 @@ export interface IGameStatePlayer {
 // hotel — entries only exist once a property's state first changes.
 export interface IGameStateProperty {
   propertyId: string;
+  // The name the buying player entered for this square — physical boards
+  // vary too widely across editions/regions to hardcode, so every owned
+  // property is named at purchase time rather than looked up from a catalog.
+  name: string;
   ownerId: PlayerId | null;
   houses: number; // 0-4; a hotel replaces these, so houses is always 0 once hasHotel is true
   hasHotel: boolean;
@@ -125,6 +129,7 @@ export interface IPlayerConnectionChangeEvent extends IGameEvent {
 export interface IPropertyStateChangeEvent extends IGameEvent {
   type: "propertyStateChange";
   propertyId: string;
+  name: string;
   ownerId: PlayerId | null;
   houses: number;
   hasHotel: boolean;

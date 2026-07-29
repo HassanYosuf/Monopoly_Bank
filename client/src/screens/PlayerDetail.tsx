@@ -23,7 +23,6 @@ export function PlayerDetail() {
   const startedAt = useDashboardStore((s) => s.startedAt);
 
   const properties = useDashboardStore((s) => s.properties);
-  const trackProperties = useDashboardStore((s) => s.trackProperties);
 
   const edition = EDITIONS[editionId];
   const player = players.find((p) => p.id === selectedPlayerId);
@@ -107,20 +106,24 @@ export function PlayerDetail() {
         </section>
       )}
 
-      {trackProperties && ownedProperties.length > 0 && (
+      {ownedProperties.length > 0 && (
         <section className="mb-8">
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-text-faint">
             Properties Owned
           </h2>
           <div className="flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {ownedProperties.map((prop) => {
+              // Properties bought with "Track Properties" off aren't in the
+              // fixed catalog (they're named freehand), so there's no
+              // color-group def or build/mortgage mechanics for them —
+              // just a plain, non-interactive card.
               const def = propertyById(editionId, prop.propertyId);
-              if (!def) return null;
-              const swatch = COLOR_GROUP_SWATCH[def.group];
+              const swatch = def ? COLOR_GROUP_SWATCH[def.group] : "#9ca3af";
+              const Card = def ? "button" : "div";
               return (
-                <button
+                <Card
                   key={prop.propertyId}
-                  onClick={() => setManagingPropertyId(prop.propertyId)}
+                  onClick={def ? () => setManagingPropertyId(prop.propertyId) : undefined}
                   className="flex shrink-0 flex-col items-start gap-2 text-left"
                 >
                   <div
@@ -138,7 +141,7 @@ export function PlayerDetail() {
                       className="line-clamp-2 text-xs font-extrabold leading-tight"
                       style={{ color: swatch }}
                     >
-                      {def.name}
+                      {prop.name}
                     </span>
                   </div>
                   <div className="w-32 text-xs text-text-faint">
@@ -150,7 +153,7 @@ export function PlayerDetail() {
                           ? `${prop.houses} house${prop.houses > 1 ? "s" : ""}`
                           : "No buildings yet"}
                   </div>
-                </button>
+                </Card>
               );
             })}
           </div>

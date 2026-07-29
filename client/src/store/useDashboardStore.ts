@@ -22,6 +22,7 @@ export interface RuntimePlayer {
 
 export interface RuntimeProperty {
   propertyId: string;
+  name: string;
   ownerId: string | null;
   houses: number;
   hasHotel: boolean;
@@ -86,8 +87,13 @@ interface DashboardState {
   sendTransaction: (input: SendTransactionInput) => boolean;
   passGo: () => boolean;
   toggleLocked: () => boolean;
-  buyProperty: (propertyId: string) => boolean;
-  claimPropertyViaAuction: (propertyId: string, amount: number) => boolean;
+  buyProperty: (propertyId: string, name: string) => boolean;
+  // Buying with the "track properties" house rule off — no catalog slot to
+  // pick from, so the property is named freehand and given a generated id.
+  // Still recorded as owned (just with no houses/hotel/mortgage mechanics)
+  // so it shows up as a card on the buyer's profile.
+  buyCustomProperty: (name: string, amount: number) => boolean;
+  claimPropertyViaAuction: (propertyId: string, amount: number, name: string) => boolean;
   buildOnProperty: (propertyId: string) => boolean;
   sellBuildingOnProperty: (propertyId: string) => boolean;
   mortgageProperty: (propertyId: string) => boolean;
@@ -375,9 +381,15 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
       return true;
     },
 
-    buyProperty: (propertyId) => {
+    buyProperty: (propertyId, name) => {
       const state = get();
-      if (!state.selfId || state.connectionStatus !== "connected" || !state.trackProperties) {
+      const trimmedName = name.trim();
+      if (
+        !state.selfId ||
+        state.connectionStatus !== "connected" ||
+        !state.trackProperties ||
+        !trimmedName
+      ) {
         return false;
       }
       const def = propertyById(state.edition, propertyId);
@@ -389,12 +401,41 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         fromId: state.selfId,
         toId: BANK_ID,
         amount: def.price,
-        memo: def.name,
+        memo: trimmedName,
       });
       const event: GameEvent = {
         ...eventBase(state.selfId),
         type: "propertyStateChange",
         propertyId,
+        name: trimmedName,
+        ownerId: state.selfId,
+        houses: 0,
+        hasHotel: false,
+        mortgaged: false,
+      };
+      socket?.proposeEvent(event);
+      return true;
+    },
+
+    buyCustomProperty: (name, amount) => {
+      const state = get();
+      const trimmedName = name.trim();
+      if (!state.selfId || state.connectionStatus !== "connected" || !trimmedName || amount <= 0) {
+        return false;
+      }
+
+      state.sendTransaction({
+        type: "buy-property",
+        fromId: state.selfId,
+        toId: BANK_ID,
+        amount,
+        memo: trimmedName,
+      });
+      const event: GameEvent = {
+        ...eventBase(state.selfId),
+        type: "propertyStateChange",
+        propertyId: `custom-${crypto.randomUUID()}`,
+        name: trimmedName,
         ownerId: state.selfId,
         houses: 0,
         hasHotel: false,
@@ -407,13 +448,15 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
     // A property that was declined and auctioned off at the table — same
     // as buying, except the amount is whatever it went for (can be above or
     // below list price), entered by whoever's tracking the auction.
-    claimPropertyViaAuction: (propertyId, amount) => {
+    claimPropertyViaAuction: (propertyId, amount, name) => {
       const state = get();
+      const trimmedName = name.trim();
       if (
         !state.selfId ||
         state.connectionStatus !== "connected" ||
         !state.trackProperties ||
-        !state.allowAuction
+        !state.allowAuction ||
+        !trimmedName
       ) {
         return false;
       }
@@ -426,12 +469,13 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         fromId: state.selfId,
         toId: BANK_ID,
         amount,
-        memo: `${def.name} (auction)`,
+        memo: `${trimmedName} (auction)`,
       });
       const event: GameEvent = {
         ...eventBase(state.selfId),
         type: "propertyStateChange",
         propertyId,
+        name: trimmedName,
         ownerId: state.selfId,
         houses: 0,
         hasHotel: false,
@@ -477,12 +521,13 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         fromId: state.selfId,
         toId: BANK_ID,
         amount: def.houseCost,
-        memo: nextHasHotel ? `Hotel — ${def.name}` : `House — ${def.name}`,
+        memo: nextHasHotel ? `Hotel — ${current.name}` : `House — ${current.name}`,
       });
       const event: GameEvent = {
         ...eventBase(state.selfId),
         type: "propertyStateChange",
         propertyId,
+        name: current.name,
         ownerId: current.ownerId,
         houses: nextHouses,
         hasHotel: nextHasHotel,
@@ -511,12 +556,13 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         fromId: BANK_ID,
         toId: state.selfId,
         amount: refund,
-        memo: current.hasHotel ? `Sold hotel — ${def.name}` : `Sold house — ${def.name}`,
+        memo: current.hasHotel ? `Sold hotel — ${current.name}` : `Sold house — ${current.name}`,
       });
       const event: GameEvent = {
         ...eventBase(state.selfId),
         type: "propertyStateChange",
         propertyId,
+        name: current.name,
         ownerId: current.ownerId,
         houses: nextHouses,
         hasHotel: false,
@@ -547,12 +593,13 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         fromId: BANK_ID,
         toId: state.selfId,
         amount: mortgageValue,
-        memo: `Mortgaged — ${def.name}`,
+        memo: `Mortgaged — ${current.name}`,
       });
       const event: GameEvent = {
         ...eventBase(state.selfId),
         type: "propertyStateChange",
         propertyId,
+        name: current.name,
         ownerId: current.ownerId,
         houses: 0,
         hasHotel: false,
@@ -615,12 +662,13 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         fromId: state.selfId,
         toId: BANK_ID,
         amount: payoff,
-        memo: `Unmortgaged — ${def.name}`,
+        memo: `Unmortgaged — ${current.name}`,
       });
       const event: GameEvent = {
         ...eventBase(state.selfId),
         type: "propertyStateChange",
         propertyId,
+        name: current.name,
         ownerId: current.ownerId,
         houses: 0,
         hasHotel: false,
