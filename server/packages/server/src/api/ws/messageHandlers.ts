@@ -91,16 +91,12 @@ export const proposeEvent: MessageHandler = (ws, { gameId, userToken }, message)
         if (
           (event.from === "bank" || event.from === "freeParking") &&
           !isPlayerBanker &&
-          !(
-            event.from === "bank" &&
-            event.to === playerId &&
-            (event.category === "pass-go" || event.category === "mortgage")
-          )
+          !(event.from === "bank" && event.to === playerId && event.category === "mortgage")
         ) {
           return; // Only bankers can send money from the bank or free parking.
-          // The only self-serve exceptions are a player collecting their own
-          // Pass Go payout, and rule-validated mortgage/build payouts —
-          // everything else (e.g. an arbitrary Bank Payout) needs a banker.
+          // The only self-serve exception is rule-validated mortgage/build
+          // payouts — everything else (e.g. Pass Go, an arbitrary Bank
+          // Payout) needs a banker, via a moneyRequest a banker approves.
         } else if (
           event.from !== "bank" &&
           event.from !== "freeParking" &&
@@ -108,6 +104,22 @@ export const proposeEvent: MessageHandler = (ws, { gameId, userToken }, message)
           !isPlayerBanker
         ) {
           return; // If a user is not a banker, they cannot send money from anyone but themselves
+        }
+        break;
+      case "moneyRequest":
+        if (event.amount <= 0) {
+          return; // All requests must have an amount greater than 0
+        }
+        if (event.to !== playerId) {
+          return; // Players can only request money for themselves
+        }
+        if (event.from !== "bank" && event.from !== "freeParking") {
+          return; // Requests only exist for bank/free-parking money right now
+        }
+        break;
+      case "moneyRequestResolution":
+        if (!isPlayerBanker) {
+          return; // Only a banker can approve or reject a money request
         }
         break;
       case "playerNameChange":

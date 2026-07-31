@@ -10,6 +10,7 @@ import { PlayerCard } from "@/components/dashboard/PlayerCard";
 import { LedgerRow } from "@/components/dashboard/LedgerRow";
 import { TransactionSheet } from "@/components/transaction/TransactionSheet";
 import { IncomingConfirmations } from "@/components/dashboard/IncomingConfirmations";
+import { MoneyRequestNotifier } from "@/components/dashboard/MoneyRequestNotifier";
 import { Button } from "@/components/ui/button";
 
 export function Dashboard() {
@@ -23,11 +24,23 @@ export function Dashboard() {
   const transactions = useDashboardStore((s) => s.transactions);
   const passGo = useDashboardStore((s) => s.passGo);
   const trackProperties = useDashboardStore((s) => s.trackProperties);
+  const pendingRequestCount = useDashboardStore(
+    (s) => s.moneyRequests.filter((r) => r.status === "pending").length,
+  );
+  const hasPendingPassGo = useDashboardStore((s) =>
+    s.moneyRequests.some(
+      (r) => r.requestedBy === s.selfId && r.status === "pending" && r.type === "pass-go",
+    ),
+  );
 
   const edition = EDITIONS[editionId];
   const displayBank = useAnimatedNumber(bankBalance);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  // Bridges the gap between clicking and the request round-tripping back
+  // into moneyRequests (hasPendingPassGo) — without it, rapid re-clicks
+  // during that window could fire off several duplicate requests.
+  const [passGoSending, setPassGoSending] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 15_000);
@@ -41,14 +54,25 @@ export function Dashboard() {
 
   const onlineCount = players.filter((p) => p.isOnline).length;
   const isBanker = players.find((p) => p.id === selfId)?.isBanker ?? false;
+  const passGoDisabled = passGoSending || hasPendingPassGo;
+
+  // Once the round trip lands, hasPendingPassGo takes over as the real
+  // disabled-source-of-truth, so this flag only needs to cover the gap
+  // before that — no need to clear it on approval/rejection separately.
+  useEffect(() => {
+    if (hasPendingPassGo) setPassGoSending(false);
+  }, [hasPendingPassGo]);
 
   function handlePassGo() {
+    if (passGoDisabled) return;
+    setPassGoSending(true);
     if (!passGo()) {
-      toast.error("Couldn't collect — you're offline right now.", { icon: "📡" });
+      setPassGoSending(false);
+      toast.error("Couldn't send — you're offline right now.", { icon: "📡" });
       return;
     }
-    toast.success(`Passed Go — +${formatCurrency(edition.passGoAmount, edition)}`, {
-      icon: "🎲",
+    toast(`Pass Go request sent — waiting for the banker to approve`, {
+      icon: "🕒",
     });
   }
 
@@ -90,9 +114,14 @@ export function Dashboard() {
             <button
               onClick={() => goTo("banker-console")}
               aria-label="Banker console"
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-gold/30 bg-gold/10 text-gold transition-colors hover:bg-gold/15"
+              className="relative flex h-9 w-9 items-center justify-center rounded-full border border-gold/30 bg-gold/10 text-gold transition-colors hover:bg-gold/15"
             >
               <ShieldAlert className="h-4 w-4" />
+              {pendingRequestCount > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red px-1 font-mono text-[10px] font-bold text-white">
+                  {pendingRequestCount}
+                </span>
+              )}
             </button>
           )}
         </div>
@@ -103,9 +132,12 @@ export function Dashboard() {
         size="lg"
         className="mb-6 w-full gap-2 border-gold/30 bg-gold/10 text-gold hover:bg-gold/15"
         onClick={handlePassGo}
+        disabled={passGoDisabled}
       >
         <Sparkles className="h-4.5 w-4.5" />
-        Pass Go · Collect {formatCurrency(edition.passGoAmount, edition)}
+        {hasPendingPassGo
+          ? "Pass Go · Waiting for banker approval"
+          : `Pass Go · Collect ${formatCurrency(edition.passGoAmount, edition)}`}
       </Button>
 
       <section>
@@ -167,6 +199,7 @@ export function Dashboard() {
 
       <TransactionSheet open={sheetOpen} onOpenChange={setSheetOpen} />
       <IncomingConfirmations />
+      <MoneyRequestNotifier />
     </div>
   );
 }

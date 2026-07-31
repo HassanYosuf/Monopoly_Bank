@@ -36,6 +36,22 @@ export interface IGameStateProperty {
   mortgaged: boolean;
 }
 
+// A player's ask to move bank money into their own account (e.g. Pass Go) —
+// tracked as its own pending record rather than applied immediately, so a
+// banker has to review and approve it before any balance actually changes.
+export interface IGameStateMoneyRequest {
+  id: string;
+  from: GameEntity;
+  to: GameEntity;
+  amount: number;
+  category?: string;
+  memo?: string;
+  requestedBy: PlayerId;
+  requestedAt: string; // ISO string
+  status: "pending" | "approved" | "rejected";
+  resolvedBy?: PlayerId;
+}
+
 export interface IGameState {
   edition: string;
   players: IGameStatePlayer[];
@@ -44,6 +60,7 @@ export interface IGameState {
   showOppositionBalances: boolean;
   freeParkingBalance: number;
   open: boolean;
+  moneyRequests: IGameStateMoneyRequest[];
   // House-rule opt-outs — shared across every player rather than a
   // per-device setting, since inconsistent devices would disagree about
   // what's even allowed.
@@ -65,6 +82,8 @@ export type GameEvent =
   | IPlayerBankerStatusChangeEvent
   | ITransactionEvent
   | ITransactionDisputeEvent
+  | IMoneyRequestEvent
+  | IMoneyRequestResolutionEvent
   | IGameOpenStateChangeEvent
   | IUseFreeParkingChangeEvent
   | IShowOppositionBalancesChangeEvent
@@ -116,6 +135,25 @@ export interface ITransactionEvent extends IGameEvent {
 export interface ITransactionDisputeEvent extends IGameEvent {
   type: "transactionDispute";
   transactionEventId: string;
+}
+
+// Raised by a player asking for bank money (e.g. Pass Go) instead of an
+// ITransactionEvent moving it immediately — a banker must resolve it with
+// an IMoneyRequestResolutionEvent, and only then does an actual
+// ITransactionEvent get sent to move the money.
+export interface IMoneyRequestEvent extends IGameEvent {
+  type: "moneyRequest";
+  from: GameEntity;
+  to: GameEntity;
+  amount: number;
+  category?: string;
+  memo?: string;
+}
+
+export interface IMoneyRequestResolutionEvent extends IGameEvent {
+  type: "moneyRequestResolution";
+  requestId: string;
+  approved: boolean;
 }
 
 export interface IGameOpenStateChangeEvent extends IGameEvent {

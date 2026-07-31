@@ -8,6 +8,7 @@ export const defaultGameState: IGameState = {
   showOppositionBalances: true,
   freeParkingBalance: 0,
   open: true,
+  moneyRequests: [],
   trackProperties: false,
   allowAuction: true,
   trackHousePrices: true
@@ -138,6 +139,54 @@ export const calculateGameState = (events: GameEvent[], currentState: IGameState
         // Disputes are an annotation on a transaction, not a balance change —
         // clients derive a disputed-set from the raw event log themselves.
         return state;
+
+      // A request never moves money itself — it's just recorded as pending
+      // so a banker can see and approve/reject it. Approval is expected to
+      // be followed by an actual "transaction" event (sent by the
+      // approving banker) that does the real balance change; that keeps
+      // the ledger/ balance derivation code above completely unaware that
+      // requests exist at all.
+      case "moneyRequest":
+        return {
+          ...state,
+          moneyRequests: [
+            ...state.moneyRequests,
+            {
+              id: event.id,
+              from: event.from,
+              to: event.to,
+              amount: event.amount,
+              category: event.category,
+              memo: event.memo,
+              requestedBy: event.actionedBy,
+              requestedAt: event.time,
+              status: "pending" as const
+            }
+          ]
+        };
+
+      case "moneyRequestResolution": {
+        const request = state.moneyRequests.find((r) => r.id === event.requestId);
+        // Idempotency guard: an unknown or already-resolved request is a
+        // no-op, so a duplicate/late-arriving resolution can't be applied
+        // twice (there's nothing here to re-apply, since resolution never
+        // touches balances — but a stale status flip would still be wrong).
+        if (request === undefined || request.status !== "pending") {
+          return state;
+        }
+        return {
+          ...state,
+          moneyRequests: state.moneyRequests.map((r) =>
+            r.id === event.requestId
+              ? {
+                  ...r,
+                  status: event.approved ? ("approved" as const) : ("rejected" as const),
+                  resolvedBy: event.actionedBy
+                }
+              : r
+          )
+        };
+      }
 
       case "gameOpenStateChange":
         return {

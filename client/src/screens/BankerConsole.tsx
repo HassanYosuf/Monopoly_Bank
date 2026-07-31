@@ -29,6 +29,72 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
+function PendingRequestsCard() {
+  const moneyRequests = useDashboardStore((s) => s.moneyRequests);
+  const players = useDashboardStore((s) => s.players);
+  const selfId = useDashboardStore((s) => s.selfId);
+  const resolveMoneyRequest = useDashboardStore((s) => s.resolveMoneyRequest);
+  const editionId = useDashboardStore((s) => s.edition);
+  const edition = EDITIONS[editionId];
+
+  const pending = moneyRequests
+    .filter((r) => r.status === "pending")
+    .sort((a, b) => a.requestedAt - b.requestedAt);
+
+  if (pending.length === 0) return null;
+
+  function respond(id: string, approved: boolean) {
+    if (!resolveMoneyRequest(id, approved)) {
+      toast.error("Couldn't respond — you're offline right now.", { icon: "📡" });
+      return;
+    }
+    toast.success(approved ? "Approved" : "Rejected", { icon: approved ? "✅" : "🚫" });
+  }
+
+  return (
+    <div className="rounded-2xl border border-gold/30 bg-gold/5 p-4">
+      <h3 className="mb-3 text-sm font-bold text-text">
+        Pending Requests
+        <span className="ml-1.5 text-text-faint">({pending.length})</span>
+      </h3>
+      <div className="flex flex-col gap-2">
+        {pending.map((r) => {
+          const requester = players.find((p) => p.id === r.requestedBy);
+          return (
+            <div
+              key={r.id}
+              className="flex items-center justify-between gap-3 rounded-xl border border-border-soft bg-surface p-3"
+            >
+              <div className="flex min-w-0 items-center gap-2.5">
+                {requester && <TokenBadge token={requester.token} size={32} />}
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-bold text-text">
+                    {requester?.name ?? "Someone"}
+                    {r.requestedBy === selfId && (
+                      <span className="ml-1.5 text-xs font-semibold text-gold">(you)</span>
+                    )}
+                  </div>
+                  <div className="truncate text-xs text-text-muted">
+                    {r.memo || "Bank payout"} · {formatCurrency(r.amount, edition)}
+                  </div>
+                </div>
+              </div>
+              <div className="flex shrink-0 gap-1.5">
+                <Button size="sm" variant="secondary" onClick={() => respond(r.id, false)}>
+                  Reject
+                </Button>
+                <Button size="sm" onClick={() => respond(r.id, true)}>
+                  Approve
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function AdjustBalanceCard() {
   const players = useDashboardStore((s) => s.players);
   const sendTransaction = useDashboardStore((s) => s.sendTransaction);
@@ -289,6 +355,7 @@ export function BankerConsole() {
       </h1>
 
       <div className="flex flex-col gap-3">
+        <PendingRequestsCard />
         <AdjustBalanceCard />
 
         {trackProperties && (

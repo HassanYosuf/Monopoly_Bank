@@ -53,6 +53,29 @@ interface SendTransactionInput {
   memo: string;
 }
 
+// A request for bank money that only becomes a real balance change once a
+// banker approves it — see resolveMoneyRequest.
+export interface MoneyRequest {
+  id: string;
+  type: TransactionTypeId;
+  fromId: string;
+  toId: string;
+  amount: number;
+  memo: string;
+  requestedBy: string;
+  requestedAt: number;
+  status: "pending" | "approved" | "rejected";
+  resolvedBy?: string;
+}
+
+interface SendMoneyRequestInput {
+  type: TransactionTypeId;
+  fromId: string;
+  toId: string;
+  amount: number;
+  memo: string;
+}
+
 interface ConnectParams {
   gameId: string;
   userToken: string;
@@ -67,6 +90,7 @@ interface DashboardState {
   selfId: string | null;
   bankBalance: number;
   transactions: Transaction[];
+  moneyRequests: MoneyRequest[];
   isLocked: boolean;
   properties: Record<string, RuntimeProperty>;
   // Shared house-rule opt-outs — synced game state, not a per-device
@@ -89,6 +113,8 @@ interface DashboardState {
   connect: (params: ConnectParams) => void;
   disconnect: () => void;
   sendTransaction: (input: SendTransactionInput) => boolean;
+  sendMoneyRequest: (input: SendMoneyRequestInput) => boolean;
+  resolveMoneyRequest: (id: string, approved: boolean) => boolean;
   passGo: () => boolean;
   toggleLocked: () => boolean;
   buyProperty: (propertyId: string, name: string) => boolean;
@@ -167,10 +193,24 @@ function deriveFromEvents(rawEvents: GameEvent[]) {
     isBankrupt: p.balance < 0,
   }));
 
+  const moneyRequests: MoneyRequest[] = gameState.moneyRequests.map((r) => ({
+    id: r.id,
+    type: (r.category as TransactionTypeId | undefined) ?? "custom",
+    fromId: toDisplayEntity(r.from),
+    toId: toDisplayEntity(r.to),
+    amount: r.amount,
+    memo: r.memo ?? "",
+    requestedBy: r.requestedBy,
+    requestedAt: Date.parse(r.requestedAt),
+    status: r.status,
+    resolvedBy: r.resolvedBy,
+  }));
+
   return {
     gameState,
     transactions,
     players,
+    moneyRequests,
     properties: gameState.properties,
     trackProperties: gameState.trackProperties,
     allowAuction: gameState.allowAuction,
@@ -227,6 +267,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
     const {
       transactions,
       players,
+      moneyRequests,
       gameState,
       properties,
       trackProperties,
@@ -265,6 +306,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
     set({
       players,
       transactions,
+      moneyRequests,
       pulses,
       lastActivity,
       isLocked: !gameState.open,
@@ -287,6 +329,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
     selfId: null,
     bankBalance: 0,
     transactions: [],
+    moneyRequests: [],
     isLocked: false,
     properties: {},
     trackProperties: false,
@@ -316,6 +359,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         status: "active",
         players: [],
         transactions: [],
+        moneyRequests: [],
         pulses: {},
         lastActivity: {},
         properties: {},
@@ -379,10 +423,61 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
       return true;
     },
 
+    // Bank money never moves to a player directly off a self-serve click —
+    // it always goes through a request a banker has to review. Approving
+    // (see resolveMoneyRequest below) is what actually sends the real
+    // "transaction" event that moves the balance.
+    sendMoneyRequest: (input) => {
+      const state = get();
+      if (!state.selfId || state.connectionStatus !== "connected") return false;
+      const event: GameEvent = {
+        ...eventBase(state.selfId),
+        type: "moneyRequest",
+        from: input.fromId,
+        to: input.toId,
+        amount: input.amount,
+        category: input.type,
+        memo: input.memo,
+      };
+      socket?.proposeEvent(event);
+      return true;
+    },
+
+    // Only a banker is authorized to send this (enforced server-side too).
+    // Rejecting just records the outcome; approving also fires the actual
+    // bank -> player transaction, which is what really moves the balance —
+    // including when a banker approves their own request, which still
+    // requires this explicit step rather than crediting instantly.
+    resolveMoneyRequest: (id, approved) => {
+      const state = get();
+      if (!state.selfId || state.connectionStatus !== "connected") return false;
+      const request = state.moneyRequests.find((r) => r.id === id);
+      if (!request || request.status !== "pending") return false;
+
+      const event: GameEvent = {
+        ...eventBase(state.selfId),
+        type: "moneyRequestResolution",
+        requestId: id,
+        approved,
+      };
+      socket?.proposeEvent(event);
+
+      if (approved) {
+        state.sendTransaction({
+          type: request.type,
+          fromId: request.fromId,
+          toId: request.toId,
+          amount: request.amount,
+          memo: request.memo,
+        });
+      }
+      return true;
+    },
+
     passGo: () => {
       const state = get();
       if (!state.selfId) return false;
-      return state.sendTransaction({
+      return state.sendMoneyRequest({
         type: "pass-go",
         fromId: BANK_ID,
         toId: state.selfId,
