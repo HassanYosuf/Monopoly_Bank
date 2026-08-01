@@ -192,10 +192,16 @@ export function TransactionSheet({
     const tone: FlyTone =
       legs.toId === selfId ? "gain" : legs.fromId === selfId ? "loss" : "neutral";
 
+    // The send itself always happens right away — the coin flight below is
+    // purely a cosmetic overlay (portaled to <body>, independent of this
+    // sheet). It used to gate the real send behind its onAnimationComplete,
+    // which meant dismissing the sheet mid-flight (backdrop tap, Escape,
+    // navigating away) unmounted the flying element before that callback
+    // ever fired, silently dropping the transaction with no error shown.
+    commit(legs);
+
     if (fromRect && toRect) {
       setFlying({ from: fromRect, to: toRect, amount, tone });
-    } else {
-      commit(legs);
     }
   }
 
@@ -236,10 +242,7 @@ export function TransactionSheet({
   }
 
   function onFlyComplete() {
-    if (!flying) return;
     setFlying(null);
-    const legs = computeLegs();
-    if (legs) commit(legs);
   }
 
   return (

@@ -114,7 +114,12 @@ interface DashboardState {
   disconnect: () => void;
   sendTransaction: (input: SendTransactionInput) => boolean;
   sendMoneyRequest: (input: SendMoneyRequestInput) => boolean;
-  resolveMoneyRequest: (id: string, approved: boolean) => boolean;
+  // "already-resolved" happens when this request was approved/rejected
+  // (by this banker or another) between the row rendering and the click
+  // landing — real-world network latency makes that window big enough to
+  // hit in practice, and it isn't an offline error, so callers should show
+  // a distinct message for it rather than a generic failure.
+  resolveMoneyRequest: (id: string, approved: boolean) => "sent" | "offline" | "already-resolved";
   passGo: () => boolean;
   toggleLocked: () => boolean;
   buyProperty: (propertyId: string, name: string) => boolean;
@@ -455,9 +460,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
     // requires this explicit step rather than crediting instantly.
     resolveMoneyRequest: (id, approved) => {
       const state = get();
-      if (!state.selfId || state.connectionStatus !== "connected") return false;
+      if (!state.selfId || state.connectionStatus !== "connected") return "offline";
       const request = state.moneyRequests.find((r) => r.id === id);
-      if (!request || request.status !== "pending") return false;
+      if (!request || request.status !== "pending") return "already-resolved";
 
       const event: GameEvent = {
         ...eventBase(state.selfId),
@@ -476,7 +481,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
           memo: request.memo,
         });
       }
-      return true;
+      return "sent";
     },
 
     passGo: () => {

@@ -37,6 +37,13 @@ function PendingRequestsCard() {
   const editionId = useDashboardStore((s) => s.edition);
   const edition = EDITIONS[editionId];
 
+  // Real network latency (unlike an instant local connection) leaves a
+  // visible window between clicking and the row actually disappearing —
+  // long enough that a second tap in that window is common. Track
+  // in-flight ids locally so a repeat click on the same row is a no-op
+  // instead of racing the first click's round trip.
+  const [resolvingIds, setResolvingIds] = useState<Set<string>>(new Set());
+
   const pending = moneyRequests
     .filter((r) => r.status === "pending")
     .sort((a, b) => a.requestedAt - b.requestedAt);
@@ -44,11 +51,25 @@ function PendingRequestsCard() {
   if (pending.length === 0) return null;
 
   function respond(id: string, approved: boolean) {
-    if (!resolveMoneyRequest(id, approved)) {
+    if (resolvingIds.has(id)) return;
+    setResolvingIds((prev) => new Set(prev).add(id));
+
+    const result = resolveMoneyRequest(id, approved);
+    if (result === "offline") {
       toast.error("Couldn't respond — you're offline right now.", { icon: "📡" });
-      return;
+    } else if (result === "already-resolved") {
+      toast("Already handled — someone beat you to it.", { icon: "⏱️" });
+    } else {
+      toast.success(approved ? "Approved" : "Rejected", { icon: approved ? "✅" : "🚫" });
     }
-    toast.success(approved ? "Approved" : "Rejected", { icon: approved ? "✅" : "🚫" });
+
+    if (result !== "sent") {
+      setResolvingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
   }
 
   return (
@@ -84,11 +105,17 @@ function PendingRequestsCard() {
                   size="sm"
                   variant="secondary"
                   className="flex-1 sm:flex-none"
+                  disabled={resolvingIds.has(r.id)}
                   onClick={() => respond(r.id, false)}
                 >
                   Reject
                 </Button>
-                <Button size="sm" className="flex-1 sm:flex-none" onClick={() => respond(r.id, true)}>
+                <Button
+                  size="sm"
+                  className="flex-1 sm:flex-none"
+                  disabled={resolvingIds.has(r.id)}
+                  onClick={() => respond(r.id, true)}
+                >
                   Approve
                 </Button>
               </div>
