@@ -49,7 +49,11 @@ export interface IHeartBeatMessage {
 
 // Websocket Outgoing Message Types (server => client)
 
-export type OutgoingMessage = IInitialEventArrayMessage | INewEventMessage | IGameEndMessage;
+export type OutgoingMessage =
+  | IInitialEventArrayMessage
+  | INewEventMessage
+  | IGameEndMessage
+  | IHeartBeatAckMessage;
 
 export interface IInitialEventArrayMessage {
   type: "initialEventArray";
@@ -63,4 +67,11 @@ export interface INewEventMessage {
 
 export interface IGameEndMessage {
   type: "gameEnd";
+}
+
+// Lets the client tell a truly-dead connection apart from one that merely
+// *looks* open — see gameSocket.ts on the client for why readyState alone
+// isn't enough.
+export interface IHeartBeatAckMessage {
+  type: "heartBeatAck";
 }

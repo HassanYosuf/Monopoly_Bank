@@ -129,7 +129,9 @@ function PendingRequestsCard() {
 
 function AdjustBalanceCard() {
   const players = useDashboardStore((s) => s.players);
+  const selfId = useDashboardStore((s) => s.selfId);
   const sendTransaction = useDashboardStore((s) => s.sendTransaction);
+  const sendMoneyRequest = useDashboardStore((s) => s.sendMoneyRequest);
   const editionId = useDashboardStore((s) => s.edition);
   const edition = EDITIONS[editionId];
 
@@ -140,6 +142,12 @@ function AdjustBalanceCard() {
 
   const player = players.find((p) => p.id === playerId);
   const numericAmount = Number(amount) || 0;
+  // Crediting yourself from the bank still needs your own explicit
+  // approval as a pending request — same rule as everywhere else money
+  // can move bank -> self — rather than applying instantly just because
+  // this is "the banker window." Debiting yourself (giving money back to
+  // the bank) isn't a self-enrichment risk, so that stays instant.
+  const isSelfCredit = direction === "credit" && player?.id === selfId;
 
   function apply() {
     if (!player || numericAmount <= 0) return;
@@ -147,21 +155,22 @@ function AdjustBalanceCard() {
       direction === "credit"
         ? { fromId: BANK_ID, toId: player.id }
         : { fromId: player.id, toId: BANK_ID };
-    const sent = sendTransaction({
-      type: "custom",
-      ...legs,
-      amount: numericAmount,
-      memo: "Banker adjustment",
-    });
+    const sent = isSelfCredit
+      ? sendMoneyRequest({ type: "custom", ...legs, amount: numericAmount, memo: "Banker adjustment" })
+      : sendTransaction({ type: "custom", ...legs, amount: numericAmount, memo: "Banker adjustment" });
     setOpen(false);
     if (!sent) {
       toast.error("Couldn't apply — you're offline right now.", { icon: "📡" });
       return;
     }
-    toast.success(
-      `${direction === "credit" ? "Credited" : "Debited"} ${formatCurrency(numericAmount, edition)} ${direction === "credit" ? "to" : "from"} ${player.name}`,
-      { icon: "🏦" },
-    );
+    if (isSelfCredit) {
+      toast(`Request sent — approve it above under Pending Requests`, { icon: "🕒" });
+    } else {
+      toast.success(
+        `${direction === "credit" ? "Credited" : "Debited"} ${formatCurrency(numericAmount, edition)} ${direction === "credit" ? "to" : "from"} ${player.name}`,
+        { icon: "🏦" },
+      );
+    }
     setAmount("");
     setPlayerId(null);
   }
@@ -240,8 +249,10 @@ function AdjustBalanceCard() {
                   {formatCurrency(numericAmount, edition)}
                 </span>{" "}
                 {direction === "credit" ? "to" : "from"}{" "}
-                <span className="font-bold text-text">{player.name}</span>'s balance. This
-                applies immediately and can't be undone automatically.
+                <span className="font-bold text-text">{player.name}</span>'s balance.{" "}
+                {isSelfCredit
+                  ? "Since this pays the bank into your own account, it creates a pending request — it won't apply until you approve it above."
+                  : "This applies immediately and can't be undone automatically."}
               </>
             )}
           </DialogDescription>

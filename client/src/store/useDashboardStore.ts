@@ -454,10 +454,12 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
     },
 
     // Only a banker is authorized to send this (enforced server-side too).
-    // Rejecting just records the outcome; approving also fires the actual
-    // bank -> player transaction, which is what really moves the balance —
-    // including when a banker approves their own request, which still
-    // requires this explicit step rather than crediting instantly.
+    // Rejecting just records the outcome; approving does too — the server
+    // itself fires the actual bank -> player transaction as a trusted side
+    // effect of processing the approval, so it can enforce "bank money into
+    // your own account always needs this approval" for everyone, including
+    // a banker approving their own request, without a client-sent
+    // transaction needing a special exception to get through that rule.
     resolveMoneyRequest: (id, approved) => {
       const state = get();
       if (!state.selfId || state.connectionStatus !== "connected") return "offline";
@@ -471,16 +473,6 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         approved,
       };
       socket?.proposeEvent(event);
-
-      if (approved) {
-        state.sendTransaction({
-          type: request.type,
-          fromId: request.fromId,
-          toId: request.toId,
-          amount: request.amount,
-          memo: request.memo,
-        });
-      }
       return "sent";
     },
 

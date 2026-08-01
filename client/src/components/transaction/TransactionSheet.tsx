@@ -40,6 +40,7 @@ export function TransactionSheet({
   const selfId = useDashboardStore((s) => s.selfId);
   const editionId = useDashboardStore((s) => s.edition);
   const sendTransaction = useDashboardStore((s) => s.sendTransaction);
+  const sendMoneyRequest = useDashboardStore((s) => s.sendMoneyRequest);
   const buyProperty = useDashboardStore((s) => s.buyProperty);
   const buyCustomProperty = useDashboardStore((s) => s.buyCustomProperty);
   const ownedProperties = useDashboardStore((s) => s.properties);
@@ -207,6 +208,13 @@ export function TransactionSheet({
 
   function commit(legs: { fromId: string; toId: string }) {
     if (!type) return;
+    // Bank money into your own account — via Bank Payout or Custom, the
+    // only two types that can even reach this (Pass Go and mortgage/build
+    // payouts have their own dedicated flows) — always needs a banker's
+    // explicit approval, even if you are the banker. The server enforces
+    // this too and would reject a plain transaction here regardless.
+    const isSelfBankCredit = legs.fromId === BANK_ID && legs.toId === selfId;
+
     const sent = showPropertyPicker
       ? buyProperty(selectedPropertyId!, memo)
       : isBuyProperty
@@ -216,7 +224,9 @@ export function TransactionSheet({
             askHousePrice && customBuildable,
             Number(customHouseCost) || 0,
           )
-        : sendTransaction({ type: type.id, fromId: legs.fromId, toId: legs.toId, amount, memo });
+        : isSelfBankCredit
+          ? sendMoneyRequest({ type: type.id, fromId: legs.fromId, toId: legs.toId, amount, memo })
+          : sendTransaction({ type: type.id, fromId: legs.fromId, toId: legs.toId, amount, memo });
 
     if (!sent) {
       toast.error("Couldn't send — you're offline. Try again once you're back online.", {
@@ -228,6 +238,8 @@ export function TransactionSheet({
 
     if (isBuyProperty) {
       toast.success(`Bought ${memo} for ${formatCurrency(amount, edition)}`, { icon: "🏠" });
+    } else if (isSelfBankCredit) {
+      toast(`Request sent — waiting for the banker to approve`, { icon: "🕒" });
     } else if (legs.toId === selfId) {
       toast.success(`Received ${formatCurrency(amount, edition)}`, { icon: "💸" });
     } else if (legs.fromId === selfId) {

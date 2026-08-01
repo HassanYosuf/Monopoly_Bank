@@ -1,6 +1,7 @@
 import * as websocket from "ws";
+import { GameEvent } from "@monopoly-money/game-state";
 import gameStore from "../../gameStore";
-import { IncomingMessage } from "../dto";
+import { IHeartBeatAckMessage, IncomingMessage } from "../dto";
 import { IUserData } from "../types";
 
 // Sent to the client so it can tell "this session will never work" apart
@@ -82,30 +83,76 @@ export const proposeEvent: MessageHandler = (ws, { gameId, userToken }, message)
     const playerId = game.getPlayerId(userToken);
     const event = message.event;
 
+    // Handled before the generic switch/addEvent below because approving a
+    // request has to add *two* events (the resolution, then — if approved —
+    // the actual transaction that moves the balance) rather than one, and
+    // that follow-up transaction is server-generated and never re-enters
+    // the "transaction" authorization case below. It can't: that case now
+    // unconditionally blocks any bank money a player sends to themselves
+    // (see below), specifically so nobody — including a banker — has a
+    // client-side shortcut around this approval step. The transaction this
+    // produces is trusted because it only ever fires as a direct result of
+    // an approval that already passed its own check just above it.
+    if (event.type === "moneyRequestResolution") {
+      if (!isPlayerBanker) {
+        return; // Only a banker can approve or reject a money request
+      }
+      const request = game.getGameState().moneyRequests.find((r) => r.id === event.requestId);
+      if (!request || request.status !== "pending") {
+        return; // Unknown, or already resolved by this or another click —
+        // also what keeps a duplicate/late-arriving resolution from
+        // re-firing the transaction below a second time.
+      }
+
+      game.addEvent(event, playerId);
+      if (event.approved) {
+        // id/time/actionedBy are placeholders — addEvent overwrites all
+        // three unconditionally, they just need to satisfy GameEvent's shape.
+        game.addEvent(
+          {
+            id: "",
+            time: "",
+            actionedBy: playerId,
+            type: "transaction",
+            from: request.from,
+            to: request.to,
+            amount: request.amount,
+            category: request.category,
+            memo: request.memo
+          } as GameEvent,
+          playerId
+        );
+      }
+      return;
+    }
+
     // Authorization filtering
     switch (event.type) {
-      case "transaction":
+      case "transaction": {
         if (event.amount <= 0) {
           return; // All transactions must have an amount greater than 0
         }
+        const isBankSourced = event.from === "bank" || event.from === "freeParking";
+        const isSelfTargeted = event.to === playerId;
         if (
-          (event.from === "bank" || event.from === "freeParking") &&
-          !isPlayerBanker &&
-          !(event.from === "bank" && event.to === playerId && event.category === "mortgage")
+          isBankSourced &&
+          isSelfTargeted &&
+          !(event.from === "bank" && event.category === "mortgage")
         ) {
-          return; // Only bankers can send money from the bank or free parking.
-          // The only self-serve exception is rule-validated mortgage/build
-          // payouts — everything else (e.g. Pass Go, an arbitrary Bank
-          // Payout) needs a banker, via a moneyRequest a banker approves.
-        } else if (
-          event.from !== "bank" &&
-          event.from !== "freeParking" &&
-          event.from !== playerId &&
-          !isPlayerBanker
-        ) {
+          return; // Bank money into your own account always needs a
+          // banker's explicit approval via a moneyRequest — even if you
+          // are the banker — except a rule-validated mortgage/build
+          // payout. No transaction type (Custom, Bank Payout, Manual
+          // Adjustment, ...) gets a shortcut around this.
+        }
+        if (isBankSourced && !isPlayerBanker) {
+          return; // Only bankers can send money from the bank or free parking to someone else
+        }
+        if (!isBankSourced && event.from !== playerId && !isPlayerBanker) {
           return; // If a user is not a banker, they cannot send money from anyone but themselves
         }
         break;
+      }
       case "moneyRequest":
         if (event.amount <= 0) {
           return; // All requests must have an amount greater than 0
@@ -115,11 +162,6 @@ export const proposeEvent: MessageHandler = (ws, { gameId, userToken }, message)
         }
         if (event.from !== "bank" && event.from !== "freeParking") {
           return; // Requests only exist for bank/free-parking money right now
-        }
-        break;
-      case "moneyRequestResolution":
-        if (!isPlayerBanker) {
-          return; // Only a banker can approve or reject a money request
         }
         break;
       case "playerNameChange":
@@ -217,7 +259,11 @@ export const proposeEndGame: MessageHandler = (ws, { gameId, userToken }, messag
 
 export const heartBeat: MessageHandler = (ws, { gameId, userToken }, message) => {
   if (message.type === "heartBeat") {
-    // No operations required
-    return;
+    // The client uses this to tell a truly-dead connection apart from one
+    // that merely still reports an OPEN readyState (e.g. a mobile tab
+    // backgrounded long enough for the underlying connection to die
+    // without the browser ever firing a close event) — see gameSocket.ts.
+    const ack: IHeartBeatAckMessage = { type: "heartBeatAck" };
+    ws.send(JSON.stringify(ack));
   }
 };

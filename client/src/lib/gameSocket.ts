@@ -4,7 +4,8 @@ import { SERVER_WS_URL } from "@/lib/serverConfig";
 type IncomingMessage =
   | { type: "initialEventArray"; events: GameEvent[] }
   | { type: "newEvent"; event: GameEvent }
-  | { type: "gameEnd" };
+  | { type: "gameEnd" }
+  | { type: "heartBeatAck" };
 
 interface GameSocketHandlers {
   onInitialEvents: (events: GameEvent[]) => void;
@@ -44,6 +45,14 @@ export class GameSocket {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private intentionalClose = false;
+  // A backgrounded mobile tab can leave `ws.readyState` reporting OPEN long
+  // after the underlying connection has actually died (the OS suspends the
+  // process without ever giving the browser a close event to fire) — so
+  // readyState alone can't be trusted. Tracking whether the last heartbeat
+  // actually got acked catches that: two misses in a row means the socket
+  // is a zombie and needs to be force-closed so the watchdog reconnects it
+  // for real, instead of every action against it silently going nowhere.
+  private lastHeartbeatAcked = true;
   private failedAttempts = 0;
   private gameId: string | null = null;
   private userToken: string | null = null;
@@ -87,11 +96,19 @@ export class GameSocket {
     ws.onopen = () => {
       ws.send(JSON.stringify({ type: "auth", gameId, userToken }));
       this.failedAttempts = 0;
+      this.lastHeartbeatAcked = true;
       this.handlers.onOpen?.();
       this.heartbeatTimer = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "heartBeat" }));
+        if (ws.readyState !== WebSocket.OPEN) return;
+        if (!this.lastHeartbeatAcked) {
+          // The previous heartbeat never got a reply — this connection is
+          // dead even though readyState still says otherwise. Force it
+          // closed so onclose/the watchdog take over a real reconnect.
+          ws.close();
+          return;
         }
+        this.lastHeartbeatAcked = false;
+        ws.send(JSON.stringify({ type: "heartBeat" }));
       }, HEARTBEAT_MS);
     };
 
@@ -109,6 +126,9 @@ export class GameSocket {
           break;
         case "gameEnd":
           this.handlers.onGameEnd();
+          break;
+        case "heartBeatAck":
+          this.lastHeartbeatAcked = true;
           break;
       }
     };
