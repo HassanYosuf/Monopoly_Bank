@@ -63,7 +63,7 @@ function PendingRequestsCard() {
           return (
             <div
               key={r.id}
-              className="flex items-center justify-between gap-3 rounded-xl border border-border-soft bg-surface p-3"
+              className="flex flex-col gap-3 rounded-xl border border-border-soft bg-surface p-3 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="flex min-w-0 items-center gap-2.5">
                 {requester && <TokenBadge token={requester.token} size={32} />}
@@ -80,10 +80,15 @@ function PendingRequestsCard() {
                 </div>
               </div>
               <div className="flex shrink-0 gap-1.5">
-                <Button size="sm" variant="secondary" onClick={() => respond(r.id, false)}>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="flex-1 sm:flex-none"
+                  onClick={() => respond(r.id, false)}
+                >
                   Reject
                 </Button>
-                <Button size="sm" onClick={() => respond(r.id, true)}>
+                <Button size="sm" className="flex-1 sm:flex-none" onClick={() => respond(r.id, true)}>
                   Approve
                 </Button>
               </div>

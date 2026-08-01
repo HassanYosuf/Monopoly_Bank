@@ -133,6 +133,11 @@ interface DashboardState {
   sellBuildingOnProperty: (propertyId: string) => boolean;
   mortgageProperty: (propertyId: string) => boolean;
   unmortgageProperty: (propertyId: string) => boolean;
+  // Relinquishes an already-mortgaged property back to the bank for $0 (the
+  // owner already collected the mortgage payout) — it becomes unowned, so
+  // whoever wants it next just goes through the normal buy/auction flow,
+  // same as any other unowned square.
+  giveUpProperty: (propertyId: string) => boolean;
   setTrackProperties: (value: boolean) => boolean;
   setAllowAuction: (value: boolean) => boolean;
   setTrackHousePrices: (value: boolean) => boolean;
@@ -740,6 +745,31 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         houses: 0,
         hasHotel: false,
         mortgaged: true,
+      };
+      socket?.proposeEvent(event);
+      return true;
+    },
+
+    giveUpProperty: (propertyId) => {
+      const state = get();
+      if (!state.selfId || state.connectionStatus !== "connected") return false;
+      const current = state.properties[propertyId];
+      if (!current || !current.mortgaged) return false;
+      const isBanker = state.players.find((p) => p.id === state.selfId)?.isBanker ?? false;
+      if (current.ownerId !== state.selfId && !isBanker) return false;
+
+      const event: GameEvent = {
+        ...eventBase(state.selfId),
+        type: "propertyStateChange",
+        propertyId,
+        name: current.name,
+        price: current.price,
+        buildable: current.buildable,
+        houseCost: current.houseCost,
+        ownerId: null,
+        houses: 0,
+        hasHotel: false,
+        mortgaged: false,
       };
       socket?.proposeEvent(event);
       return true;

@@ -25,11 +25,13 @@ export function PropertyManageSheet({
   const sellBuildingOnProperty = useDashboardStore((s) => s.sellBuildingOnProperty);
   const mortgageProperty = useDashboardStore((s) => s.mortgageProperty);
   const unmortgageProperty = useDashboardStore((s) => s.unmortgageProperty);
+  const giveUpProperty = useDashboardStore((s) => s.giveUpProperty);
   const allowAuction = useDashboardStore((s) => s.allowAuction);
 
   const [auctionMode, setAuctionMode] = useState(false);
   const [auctionAmount, setAuctionAmount] = useState("");
   const [customName, setCustomName] = useState("");
+  const [confirmGiveUp, setConfirmGiveUp] = useState(false);
 
   const edition = EDITIONS[editionId];
   // Properties bought with "Track Properties" off aren't in the fixed
@@ -57,6 +59,7 @@ export function PropertyManageSheet({
     setAuctionMode(false);
     setAuctionAmount("");
     setCustomName("");
+    setConfirmGiveUp(false);
     onClose();
   }
 
@@ -126,6 +129,16 @@ export function PropertyManageSheet({
       return;
     }
     toast.success(`Unmortgaged ${displayName}`, { icon: "🔓" });
+  }
+
+  function handleGiveUp() {
+    if (!propertyId) return;
+    if (!giveUpProperty(propertyId)) {
+      toast.error("Couldn't release — you're offline right now.", { icon: "📡" });
+      return;
+    }
+    toast.success(`${displayName} released back to the bank`, { icon: "🏳️" });
+    closeAndReset();
   }
 
   return (
@@ -299,6 +312,37 @@ export function PropertyManageSheet({
                         </>
                       )}
                     </Button>
+                  )}
+
+                  {current?.mortgaged && canManage && (
+                    confirmGiveUp ? (
+                      <div className="rounded-2xl border border-red/30 bg-red/5 p-3.5">
+                        <p className="mb-3 text-xs font-semibold text-red">
+                          Releases {displayName} back to the bank for $0 — it becomes unowned
+                          and can be bought or auctioned by anyone from here on.
+                        </p>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="secondary"
+                            className="flex-1"
+                            onClick={() => setConfirmGiveUp(false)}
+                          >
+                            Cancel
+                          </Button>
+                          <Button variant="destructive" className="flex-1" onClick={handleGiveUp}>
+                            Give Up
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmGiveUp(true)}
+                        className="flex items-center justify-center gap-1.5 rounded-full border border-dashed border-red/40 py-2 text-sm font-semibold text-red transition-colors hover:bg-red/5"
+                      >
+                        <Gavel className="h-3.5 w-3.5" />
+                        Give up property
+                      </button>
+                    )
                   )}
                 </div>
               ) : null}
